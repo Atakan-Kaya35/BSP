@@ -1,0 +1,10 @@
+__pycache__/
+*.h5
+*.zip
+*.csv
+*.log
+/tmp/
+*.json
+.env
+.vscode/
+.DS_Store

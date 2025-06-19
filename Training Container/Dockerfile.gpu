@@ -1,0 +1,22 @@
+# Use TensorFlow GPU base image with Python 3.8
+FROM tensorflow/tensorflow:2.13.0-gpu
+
+# Set the working directory
+WORKDIR /opt/ml/code
+
+# Copy and install requirements
+COPY requirements.txt .
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Copy training source code and support files
+COPY app.py .
+COPY bsp_cloud_lib.py .
+COPY bsp_util.py .
+COPY pyified_resources.py .
+COPY BSP_Extreme_Value_Evaluator_Models.csv .
+COPY BSP_Plateau_Evaluator_Models.csv .
+COPY BSP_General_Trend_Change_Evaluator_Models.csv .
+
+# Entrypoint for SageMaker
+ENTRYPOINT ["python", "app.py"]

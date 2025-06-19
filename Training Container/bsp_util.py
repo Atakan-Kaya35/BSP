@@ -1,0 +1,469 @@
+import json
+import os
+import traceback
+import zipfile
+import numpy as np
+import pandas as pd
+import logging
+from pyified_resources import Standard_Vars
+from bsp_cloud_lib import Cloud_Storage
+from sklearn.model_selection import train_test_split
+from keras.callbacks import EarlyStopping
+
+
+class Pred_Tools():
+    def pred_next_three(past_values, wanted_history=Standard_Vars.FIVE_MIN_INTERVAL, model=None):
+        """
+        Predicts the next three values at given context
+
+        Args: 
+            past_values: any length of bs values
+            wanted_history: the number of most recent values to be used for the prediction, 
+                           important for the input style of the pred model
+            model: the singular model to do the predicting
+        
+        Returns:
+            1D array of 3 predicted values
+        """
+        predictions = []
+
+        try:
+            # modify the simple array into scaled pd dataframe
+            past_values = pd.DataFrame(past_values, columns=["Blood_Sugars"])
+            past_values = past_values[:].values
+            past_values.reshape(-1, 1)
+            past_values = Standard_Vars.sc.transform(past_values)
+        
+            # get only what is required for the model
+            X_test = past_values[len(past_values) - wanted_history:]
+        
+            # configure X_test to fit the model
+            X_test = np.array(X_test)
+            X_test = np.reshape(X_test, (1, Standard_Vars.REG_SHAPE, 1))
+        
+            # make prediction
+            # TODO
+            predicted_blood_sugar = model.predict(X_test)
+            predictions.append(predicted_blood_sugar[0])
+
+            # append the list
+            X_test = np.append(X_test, [predictions[-1]])
+        
+            # repeats three times from here
+        
+            # get list ready for fiting model
+            X_test = X_test[-wanted_history:]
+            X_test = np.array(X_test)
+            X_test = np.reshape(X_test, (1, Standard_Vars.REG_SHAPE, 1))
+        
+            # predicted_blood_sugar = many_model_predict(X_test)
+            predicted_blood_sugar = model.predict(X_test)
+            predictions.append(predicted_blood_sugar[0])
+        
+            X_test = np.append(X_test, [predictions[-1]])
+        
+            X_test = X_test[-wanted_history:]
+            X_test = np.array(X_test)
+            X_test = np.reshape(X_test, (1, Standard_Vars.REG_SHAPE, 1))
+            
+            # predicted_blood_sugar = many_model_predict(X_test)
+            predicted_blood_sugar = model.predict(X_test)
+            predictions.append(predicted_blood_sugar[0])
+        
+            X_test = np.append([predictions[-1]], X_test)
+            X_test = X_test[-wanted_history:]
+        
+            predictions = Standard_Vars.sc.inverse_transform(predictions)
+        
+            return predictions
+        
+        except Exception as e:
+            logging.error(f"Error in pred_next_three: {e}")
+            return []
+
+    
+class Model_Assessment():
+    @staticmethod
+    def accuracy_finder(predicted, real, percentage_error_threshold=0.03, big_error_treshold=5):
+        """
+        Calculates accuracy between two sets
+
+        Args:
+            prediction: the predicted values
+            real: the actual values in the same time interval
+            percentage_error_threshold: percentage deviation for a pred to be considered true
+
+        Returns:
+            the accuracy coefficient between two sets
+        """
+        # Calculate the absolute percentage error for each prediction
+        # absolute_error = np.abs((predicted - real))
+        zero_indices = np.where(real == 0)[0]
+        if len(zero_indices) > 0:
+            print(f"Warning: {len(zero_indices)} division by zero attempts detected (real values contain zeros)")
+        
+        absolute_percentage_error = np.abs((predicted - real) / real)
+
+        # Count the number of accurate predictions based on the threshold
+        accurate_predictions = np.sum(absolute_percentage_error <= percentage_error_threshold)
+        # big_accurate_predictions = np.sum(absolute_error <= big_error_treshold)
+
+        # Calculate the percentage of accurate predictions
+        accuracy_coef = (accurate_predictions / len(real))
+
+        return accuracy_coef
+    
+    @staticmethod
+    def model_accuracy_finder(model, X_test, y_test):
+        """Get the real blood sugar values"""
+        predicted_blood_sugar = model.predict(X_test)
+        return Model_Assessment.accuracy_finder(predicted_blood_sugar, y_test)
+
+        
+    @staticmethod
+    def model_score_generator(models):
+        """
+        Gererates the scores for all models in a bag of models [extreme, plateau, trend change]
+
+        Args: 
+            models: a bag of models to be evaluated
+        
+        Returns:
+            2D List of scores in the form: 
+            [extreme values score, plateau score, trend change score] 
+            for every model in seqiential order of the model mashup
+        """
+        scores = []
+        evaluation_datasets = Standard_Vars.evaluation_datasets
+
+        for model in models:
+            score = []
+            for evaluation_dataset in evaluation_datasets:
+                indication_rating = 0
+                for i in range(len(evaluation_dataset)):
+                    # Get the full sequence including future values we want to predict
+                    full_sequence = evaluation_dataset[i]
+                    
+                    # Take first Standard_Vars.FIVE_MIN_INTERVAL points as input
+                    input_data = full_sequence[:Standard_Vars.FIVE_MIN_INTERVAL]
+                    input_data = np.array(input_data)  # Convert to numpy array
+                    
+                    # Scale the input data
+                    scaled_data = Standard_Vars.sc.transform(input_data)
+                    X_test = scaled_data.reshape(1, Standard_Vars.REG_SHAPE, 2)
+                    
+                    # Make three predictions recursively
+                    predictions = []
+                    current_input = X_test.copy()
+                    
+                    for _ in range(3):
+                        pred = model.predict(current_input)[0][0]
+                        predictions.append(pred)
+                        
+                        # Create new input for next prediction
+                        new_point = np.array([[pred, 0.5]])  # Using time=0 for future points
+                        current_input = np.append(
+                            current_input[:, :-1, :],
+                            [new_point],
+                            axis=1
+                        )
+                    
+                    # Get the actual third value from the dataset
+                    actual_third_value = full_sequence[Standard_Vars.FIVE_MIN_INTERVAL + 2]
+                    
+                    # Create dummy array for inverse transform of prediction
+                    dummy_pred = np.array([[predictions[2], 0.5]])
+                    pred_glucose = Standard_Vars.sc.inverse_transform(dummy_pred)[0][0]
+                    
+                    # Calculate accuracy for the third prediction only
+                    accuracy_score = Model_Assessment.accuracy_finder(
+                        np.array([pred_glucose]), 
+                        np.array([actual_third_value[0]])
+                    )
+                    indication_rating += accuracy_score
+                    
+                score.append(indication_rating / len(evaluation_dataset))
+            scores.append(score)
+        return scores
+
+
+class Model_Creation():
+    @staticmethod
+    def train_send_model(
+        username,
+        source_csv_file_name=None,
+        requested_num_of_models=2,
+        epochs=2,
+        batch_size=24,
+        remaining_tries=7,
+        acceptable_acc_score=0.10,
+        num_of_layers=3
+        ):
+        """
+        Creates and ships a zip file to the cloud with
+        a custome model with adjustably acceptable statistics, its context scores 
+        and the data it was trained on; proceeds to delete the zip file and the files in it
+
+        Args:
+            username: the username of the user
+            source_csv_file_name: the name of the data file in case it is not same with the username
+            requested_num_of_models: how many models to train and store
+            epochs: how many epochs to train
+            batch_size: the size of batch to train with
+            remaining_tries: how many attempts are allowed before giving up
+            acceptable_acc_score: the lowest acceptable validation score for a model
+
+        Returns:
+            To The Cloud:
+                Zip file containing following: custome model file, its context scores, data it was trained on
+            As code:
+                Dictionary type API return-ready json message
+                API status code
+        """
+        try:
+            EPOCHS = epochs
+            BATCH_SIZE = batch_size
+            num_of_model_till_done = requested_num_of_models
+            num_models_accepted = 0
+            CSV_METADATA_SKIP = 25
+            TIME_COL = "Zaman damgası (GG-AA-YYYY/ss:dd:sn)"
+            GLUCOSE_COL = "Glikoz Değeri (mg/dL)"
+            TEST_SIZE = 0.2  # Percentage for test split
+            VAL_SIZE = 0.2   # Percentage of training for validation
+            
+            # default file name is the username of user
+            if source_csv_file_name is None:
+                source_csv_file_name = f'{username}.csv'
+
+            # Data Loading and Preprocessing
+            def load_and_preprocess_data():
+                df_raw = pd.read_csv(source_csv_file_name, sep=";")
+                
+                # Replace categorical glucose values
+                # 41 to prevent division by 0
+                df_raw.iloc[CSV_METADATA_SKIP:, 7] = df_raw.iloc[CSV_METADATA_SKIP:, 7].replace({
+                    "Yüksek": 400, 
+                    "Düşük": 40
+                })
+                df_raw[GLUCOSE_COL] = pd.to_numeric(df_raw[GLUCOSE_COL], errors="coerce")
+                
+                # Convert datetime and extract time features
+                df_raw[TIME_COL] = pd.to_datetime(df_raw[TIME_COL], errors='coerce')
+                df_raw["hour"] = df_raw[TIME_COL].dt.hour
+                df_raw["minute"] = df_raw[TIME_COL].dt.minute
+                df_raw["time_of_day"] = (df_raw["hour"] * 60 + df_raw["minute"]) / 1440
+                
+                #TODO: this is not acceptable since missing in time series cannot just be dropped
+                # Drop rows with missing values
+                df_clean = df_raw.dropna(subset=[GLUCOSE_COL, "time_of_day"]).iloc[CSV_METADATA_SKIP:]
+                
+                return df_clean[[GLUCOSE_COL, "time_of_day"]].values
+
+            # Create sequences with time features
+            def create_sequences(data, seq_length):
+                X, y = [], []
+                for i in range(seq_length, len(data)):
+                    X.append(data[i-seq_length:i])
+                    # if you but 1 instead of 0 you predict the TOD
+                    y.append(data[i, 0])  # Glucose value is at index 0
+                return np.array(X), np.array(y)
+
+            # Main execution
+            data = load_and_preprocess_data()
+
+            # Scale all features together to prevent data leakage
+            scaled_data = Standard_Vars.sc.transform(data)
+
+            # Create sequences
+            X, y = create_sequences(scaled_data, Standard_Vars.FIVE_MIN_INTERVAL)
+
+            # Split into train and test sets (preserving temporal order)
+            train_size = int(len(X) * (1 - 0.9))
+            X_train, X_test = X[:train_size], X[train_size:]
+            y_train, y_test = y[:train_size], y[train_size:]
+
+            # Further split training set for validation
+            X_train, X_val, y_train, y_val = train_test_split(
+                X_train, y_train, test_size=VAL_SIZE, shuffle=False)
+
+            # Importing the Keras libraries and packages
+            from keras.models import Sequential
+            from keras.layers import Dense
+            from keras.layers import LSTM
+            from keras.layers import Dropout
+
+            while num_of_model_till_done > 0 and remaining_tries > 0:
+                # Initialising the RNN
+                regressor = Sequential()
+
+                # Adding the first LSTM layer and some Dropout regularisation
+                regressor.add(LSTM(
+                    units=50, 
+                    return_sequences=True, 
+                    input_shape=(X_train.shape[1], X_train.shape[2])
+                ))
+                regressor.add(Dropout(0.2))
+
+                # Adding num_of_layers LSTM layers and some Dropout regularisation
+                for i in range(num_of_layers):
+                    regressor.add(LSTM(units=50, return_sequences=True))
+                    regressor.add(Dropout(0.2))
+                    
+                regressor.add(LSTM(units=50))
+                regressor.add(Dropout(0.2))
+
+                # Adding the output layer
+                regressor.add(Dense(units=1))
+
+                # Compiling the RNN
+                regressor.compile(optimizer='adam', loss='mean_squared_error')
+
+                early_stop = EarlyStopping(
+                    monitor='val_loss', 
+                    patience=6, 
+                    restore_best_weights=True
+                )
+
+                regressor.fit(
+                    X_train, 
+                    y_train, 
+                    epochs=EPOCHS, 
+                    batch_size=BATCH_SIZE,
+                    validation_data=(X_val, y_val),
+                    callbacks=[early_stop],
+                    verbose=1
+                )
+
+                # check if the model is acceptable
+                curr_model_acc = Model_Assessment.model_accuracy_finder(regressor, X_test, y_test)
+                if curr_model_acc > acceptable_acc_score:
+                    print("Model ACCEPTED with accuracy:", curr_model_acc)
+                    num_of_model_till_done -= 1
+                    num_models_accepted += 1
+                        
+                    # if the model in hand passed the acceptable threshold
+                    # TODable: HighJacked
+                    scores = Model_Assessment.model_score_generator([regressor])
+                    scores = [score for i in scores for score in i]
+
+                    # Makes the regressor and the scores into h5 and txt files respectively and send them to the cloud
+                    scores = {
+                        "extreme values": scores[0], 
+                        "plateau": scores[1], 
+                        "trend change": scores[2]
+                    }
+                    scores_file = f"{username}_{num_models_accepted}_scores.json"
+                    with open(scores_file, 'w') as f:
+                        json.dump(scores, f)
+
+                    regressor_file = f"{username}_{num_models_accepted}.h5"
+                    regressor.save(regressor_file)
+                else:
+                    print("Model REJECTED with accuracy:", curr_model_acc)
+                                    
+                remaining_tries -= 1
+
+            if num_models_accepted > 0:
+                # Create a zip file containing both the regressor and the scores
+                zip_file = f"{username}_data.zip"
+                output_zip_path = f"/tmp/{username}_data.zip"
+                metadata = {"number of models": num_models_accepted}
+                metadata_file = f"{username}_metadata.json"
+                
+                with open(metadata_file, 'w') as f:
+                    json.dump(metadata, f)
+                    
+                with zipfile.ZipFile(output_zip_path, 'w', compression=zipfile.ZIP_DEFLATED) as zipf:
+                    for i in range(1, num_models_accepted + 1):
+                        zipf.write(f"{username}_{i}.h5")
+                        zipf.write(f"{username}_{i}_scores.json")
+                    zipf.write(metadata_file)
+                    zipf.write(source_csv_file_name)
+
+                # Upload the zip file to the cloud
+                # LOCAL: this gets commented out
+                Cloud_Storage.upload_to_s3(f"{username}/{zip_file}", output_zip_path)
+
+                # CAUTION: the following commands are erased to save costs and since the training 
+                # container is very disposable, a good and long term arhitecture should leave no
+                # file behind and this is not a best practice, through it is for this use case 
+                # Delete the local files
+                """for i in range(1,num_models_accepted + 1):
+                    os.remove(f"{username}_{i}.h5")
+                    os.remove(f"{username}_{i}_scores.json")
+                os.remove(metadata_file)
+                os.remove(source_csv_file_name)
+                os.remove(source_csv_file_name)
+                os.remove(regressor_file)
+                os.remove(scores_file)
+                os.remove(output_zip_path)"""
+
+                return {"Success": "File created and uploaded successfully!"}, 200
+
+            return {"Failure": "No acceptable models were attained in training!"}, 400
+        except Exception as e:
+            error_details = traceback.format_exc()
+            print(f"Error occurred: {error_details}", error_details)
+            return {"error": str(e)}, 500
+            
+    @staticmethod
+    def full_model_creation(
+        username, 
+        num_of_models=2, 
+        epochs=2, 
+        batch_size=24, 
+        remaining_tries=7, 
+        acceptable_acc_score=0.10, 
+        num_of_layers=3
+    ):
+        """
+        Parameters
+        ----------
+        username : string
+            username to obtaşn path necessary to access the S3 files.
+        num_of_models : TYPE, optional
+            DESCRIPTION. The default is 2.
+        epochs : TYPE, optional
+            DESCRIPTION. The default is 2.
+        batch_size : TYPE, optional
+            DESCRIPTION. The default is 24.
+        remaining_tries : TYPE, optional
+            DESCRIPTION. The default is 7.
+        acceptable_acc_score : TYPE, optional
+            DESCRIPTION. The default is 0.10.
+        num_of_layers : TYPE, optional
+            DESCRIPTION. The default is 3.
+
+        Returns
+        -------
+        dict
+            DESCRIPTION.
+        int
+            DESCRIPTION.
+
+        """
+        try:
+            # LOCAL: This gets subbed for following
+            #input_csv_path = f".\{username}.csv"
+            input_csv_path = f"/tmp/{username}.csv"
+            Cloud_Storage.download_from_s3(f"{username}/{username}.csv", input_csv_path)
+            print("it is the new")
+
+            # Call with extended params
+            Model_Creation.train_send_model(
+                username,
+                input_csv_path,
+                requested_num_of_models=num_of_models,
+                epochs=epochs,
+                batch_size=batch_size,
+                remaining_tries=remaining_tries,
+                acceptable_acc_score=acceptable_acc_score,
+                num_of_layers=num_of_layers
+            )
+
+            return {"Hurray!": "All seems fine"}, 200
+
+        except Exception as e:
+            error_details = traceback.format_exc()
+            print(f"Error occurred: {error_details}", error_details)
+            return {"error": str(e)}, 500

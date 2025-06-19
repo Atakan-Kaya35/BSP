@@ -1,0 +1,78 @@
+name of the models are now, starting from 1
+f"{username}_{num_models_accepted}.h5"
+
+their score name now:
+f"{username}_{num_models_accepted}_scores.json"
+
+there is now a metadata file with how many models the zip has
+
+
+ml.m5.large has a gpu but U using tensorflow-cpu
+
+⚙️ 1. Model Enhancements
+🔁 a. Multiple Model Ensembles (you mentioned this)
+Train multiple architectures per user: LSTM, GRU, TCN
+
+At inference, use:
+
+Average ensemble
+
+Weighted voting based on past accuracy scores (you already generate indicators)
+
+Context-aware selection (e.g., use a model better at detecting plateaus if past trend suggests stabilization)
+
+🧠 b. Model-aware Uncertainty
+Add standard deviation across model outputs
+
+Return confidence intervals (e.g., "Predicted: 135 ± 12 mg/dL")
+
+🧾 2. Feature Engineering
+⏱ a. Time-of-day / Circadian input
+Add one-hot or sin/cos encoding of time of day (e.g., 9am, 2pm) as input
+
+Many diabetic patients show daily insulin sensitivity cycles
+
+🍽️ b. Meal and insulin tagging
+When available, encode food and insulin bolus entries (binary flag or quantity)
+
+You can start simple: had_meal_recently=True, fasted=True
+
+📉 3. Model Training Improvements
+🔄 a. Sliding window retraining
+Automatically retrain user models weekly using new Dexcom data
+
+Store previous models and fine-tune instead of training from scratch
+
+🧹 b. Outlier filtering
+Use Tukey or Z-score filtering to exclude corrupt Dexcom readings before training
+
+🚀 4. System Optimization / Speed-ups
+🧊 a. Pre-load models
+Keep the latest model loaded between Lambda calls using Lambda SnapStart (Java-only for now, but worth watching)
+
+📦 b. Quantized models
+Export trained models using TensorFlow Lite for faster inference
+
+🔍 5. User Feedback & Explainability
+💬 a. Prediction rationale
+Output why a drop or rise is predicted (e.g., “Based on a sharp downward trend and recent instability”)
+
+📊 b. Progress feedback
+If retraining weekly, show "Model confidence improved by X%" over previous week
+
+🔐 6. Resilience and Security
+🛡️ a. Secure zipped model delivery
+Encrypt .zip file before storing in S3, decrypt inside container
+
+🧠 b. Fallback model safety net
+If personal model fails, use a generalized population model instead
+
+🤯 Bonus Innovation: "AI Copilot" for Diabetes Management
+Instead of just predicting, begin suggesting actions:
+
+“Consider a small snack in 15 mins”
+
+“Trend suggests insulin correction soon”
+
+Start simple by flagging high-risk intervals with rules; evolve into policy generation via RL
+
