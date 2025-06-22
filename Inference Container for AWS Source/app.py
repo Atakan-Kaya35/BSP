@@ -25,14 +25,29 @@ def lambda_handler(event, context):
     Returns:
     - JSON result with prediction and indicators
     """
+    
+    # An options tyoe http call in a rest api requires special treatment, 
+    # if the lambda function switches to a rest api from a https api recponsider code
+    """if event.get("httpMethod") == "OPTIONS":
+        return {
+            "statusCode": 200,
+            "headers": {
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "OPTIONS,POST,GET",
+                "Access-Control-Allow-Headers": "Content-Type"
+            },
+            "body": ""
+        }"""
+    
     try:
         # LOCAL: manuelly complete this
         """username = "atakanka350@gmail.com"
-        password = "***REDACTED-ROTATED-CREDENTIAL***
+        password = "***REDACTED-ROTATED-CREDENTIAL***"
         """ 
         body = json.loads(event['body'])
         username = body.get('username')
         password = body.get('password')
+        # /LOCAL
         
         if not username or not password:
             return {
@@ -75,9 +90,9 @@ def lambda_handler(event, context):
             was_predicted[-1] = []
  """
         # Step 3: Download and extract zip
-        # LOCAL: test the paths are made from / to \\ 
+        # LOCAL: test the paths are made from / to \\ , comment out the s3 get method as it is not needed
+        # if you need to test a new set of models manuelly download from s3 etc and place inside the tmp folder as zip file
         # (there is another change at the download_from_s3 function about the making sure the tmp directory exists)
-        #zip_file = f".\\{username}_data.zip"
         zip_file = f"/tmp/{username}_data.zip"
         Cloud_Storage.download_from_s3(f"{username}/{username}_data.zip", zip_file)
         # first read the metadata file 
@@ -103,6 +118,7 @@ def lambda_handler(event, context):
         for i in range(1, metadata[0]+1):
             with open(f"/tmp/{username}_{i}_scores.json", 'r') as file:
                 indic_score_list.append(list(json.load(file).values()))
+        # /LOCAL
 
         # Step 5: Run prediction
         nexts, indic_data = Pred_Tools.pred_next_arbitrary(prevs.copy(), 
@@ -116,11 +132,11 @@ def lambda_handler(event, context):
 
         # TODO: for continuous inferences dexcom skipping BS values in sometimes sending them late was a problem
         # this is one of the codes written to remedy that situation
-        """# append the new predictions
-        nexts = nexts.flatten()
+        # append the new predictions
         was_predicted[-1] = nexts
         past = prevs.copy()
-        prevs.extend(nexts)"""
+        # Convert prevs to a list so we can append
+        prevs = np.concatenate([prevs, nexts], axis=0)
 
         # Step 6: Generate indicators
         indicators = Model_Assessment.indicator_recognizer(indic_data, indic_score_list)
@@ -173,3 +189,4 @@ def lambda_handler(event, context):
 
 #LOCAL: DO NOT call the function otherwise
 #lambda_handler(0,0)
+# /LOCAL

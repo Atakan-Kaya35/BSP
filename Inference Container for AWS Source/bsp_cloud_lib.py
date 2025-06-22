@@ -30,7 +30,7 @@ class Cloud_Storage:
         Returns:
             None
         """
-        #TODO: local testing erase
+        #TODO: LOCAL testing erase
         # Ensure the parent directory exists
         #os.makedirs(os.path.dirname(local_path), exist_ok=True)
 

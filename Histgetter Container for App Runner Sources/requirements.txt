@@ -2,3 +2,4 @@ flask
 playwright
 boto3
 python-dotenv
+flask-cors==4.0.0

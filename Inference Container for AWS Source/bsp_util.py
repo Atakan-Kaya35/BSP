@@ -56,6 +56,11 @@ class Pred_Tools():
         """
         predictions = []
         indic_data = [[]] * len(models)
+        
+        
+        past_values = past_values[::-1]
+        
+        
 
         # modify the simple array into scaled pd dataframe
         past_values = np.array(past_values)  # Should already be 2D from app.py

@@ -2,8 +2,10 @@ import os
 import boto3
 from playwright.sync_api import sync_playwright
 from flask import Flask, jsonify
+from flask_cors import CORS
 
 app = Flask(__name__)
+CORS(app)
 
 def run_playwright(username, password, playwright) -> None:
     browser = playwright.chromium.launch(headless=True)
