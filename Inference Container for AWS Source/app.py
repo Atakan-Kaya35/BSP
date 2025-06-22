@@ -62,7 +62,9 @@ def lambda_handler(event, context):
         glucose_readings = dexcom.get_glucose_readings()
         prevs = np.array([
             [float(glucose_readings[i].value), 
-            (glucose_readings[i].datetime.hour * 60 + glucose_readings[i].datetime.minute) / 1440]
+            # Original: tod exemption try
+            #(glucose_readings[i].datetime.hour * 60 + glucose_readings[i].datetime.minute) / 1440
+            ]
             for i in range(Standard_Vars.REG_SHAPE)
         ])[::-1] 
         print(prevs)

@@ -35,8 +35,14 @@ class Pred_Tools():
             # TODO: Should it be 2 * values[0][1] - values[1][1] instead, is the time going from right to left or left to right/ TIME INCREASES AND THE PREDİCTİON IS MADE SO THE FİRST ELEMNT
             # IN THE VALUES LİST IS THE FARTHEST FROM THE PRESENT
             a = model.predict(values)
-            preds.append([model.predict(values)[0][0], 2 * values[0][-1][1] - values[0][-2][1]])
-        predicted_blood_sugar = [np.mean(preds[:][0], axis=0), preds[0][1]]
+            preds.append([model.predict(values)[0][0] 
+                          # Original: tod exemption
+                          #,2 * values[0][-1][1] - values[0][-2][1]
+                          ])
+        predicted_blood_sugar = [np.mean(preds[:][0], axis=0)
+                                 # Original: tod exemption
+                                 #, preds[0][1]
+                                 ]
         return predicted_blood_sugar, preds
 
 
@@ -56,11 +62,6 @@ class Pred_Tools():
         """
         predictions = []
         indic_data = [[]] * len(models)
-        
-        
-        past_values = past_values[::-1]
-        
-        
 
         # modify the simple array into scaled pd dataframe
         past_values = np.array(past_values)  # Should already be 2D from app.py
@@ -72,7 +73,7 @@ class Pred_Tools():
         # configure X_test to fit the model
         # TODO: what does this do and is it necessary
         X_test = np.array(X_test)
-        X_test = np.reshape(X_test, (1, 12, 2))
+        X_test = np.reshape(X_test, (1, Standard_Vars.REG_SHAPE, Standard_Vars.INPUT_DIM))
 
         # make prediction
         mean_pred, individual_preds = Pred_Tools.many_model_predict(X_test, models = models)

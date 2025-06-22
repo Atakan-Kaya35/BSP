@@ -150,7 +150,7 @@ class Model_Assessment():
                     
                     # Scale the input data
                     scaled_data = Standard_Vars.sc.transform(input_data)
-                    X_test = scaled_data.reshape(1, Standard_Vars.REG_SHAPE, 2)
+                    X_test = scaled_data.reshape(1, Standard_Vars.REG_SHAPE, Standard_Vars.INPUT_DIM)
                     
                     # Make three predictions recursively
                     predictions = []
@@ -161,7 +161,9 @@ class Model_Assessment():
                         predictions.append(pred)
                         
                         # Create new input for next prediction
-                        new_point = np.array([[pred, 0.5]])  # Using time=0 for future points
+                        # Original: for no tod testing
+                        #new_point = np.array([[pred, 0.5]])  # Using time=0 for future points
+                        new_point = np.array([Standard_Vars.medianalyze_point(pred)])
                         current_input = np.append(
                             current_input[:, :-1, :],
                             [new_point],
@@ -172,7 +174,9 @@ class Model_Assessment():
                     actual_third_value = full_sequence[Standard_Vars.FIVE_MIN_INTERVAL + 2]
                     
                     # Create dummy array for inverse transform of prediction
-                    dummy_pred = np.array([[predictions[2], 0.5]])
+                    # Original: for no tod testing
+                    #dummy_pred = np.array([[predictions[2], 0.5]])
+                    dummy_pred = np.array([Standard_Vars.medianalyze_point(predictions[2])])
                     pred_glucose = Standard_Vars.sc.inverse_transform(dummy_pred)[0][0]
                     
                     # Calculate accuracy for the third prediction only
@@ -257,7 +261,11 @@ class Model_Creation():
                 # Drop rows with missing values
                 df_clean = df_raw.dropna(subset=[GLUCOSE_COL, "time_of_day"]).iloc[CSV_METADATA_SKIP:]
                 
-                return df_clean[[GLUCOSE_COL, "time_of_day"]].values
+
+                # TODO: Original is:
+                #return df_clean[[GLUCOSE_COL, "time_of_day"]].values
+                # below is the modification to exclude the time of the day value for testing
+                return df_clean[[GLUCOSE_COL]].values  # remove TOD
 
             # Create sequences with time features
             def create_sequences(data, seq_length):
