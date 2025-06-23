@@ -2,9 +2,9 @@ from keras.models import load_model
 from sklearn.preprocessing import MinMaxScaler
 import numpy as np
 
-class Models():
+""" class Models():
     REGRESSOR1 = load_model("67_acc_model(12,50,24,10).h5")
-    MODEL_MIX = [REGRESSOR1]
+    MODEL_MIX = [REGRESSOR1] """
 
 class Standard_Vars:
     FIVE_MIN_INTERVAL = 12

@@ -116,8 +116,19 @@ class Model_Assessment():
     @staticmethod
     def model_accuracy_finder(model, X_test, y_test):
         """Get the real blood sugar values"""
+        """ predicted_blood_sugar = model.predict(X_test)
+        return Model_Assessment.accuracy_finder(predicted_blood_sugar, y_test) """
         predicted_blood_sugar = model.predict(X_test)
+        # reshape for scaler: (N,1)
+        predicted_blood_sugar = predicted_blood_sugar.reshape(-1, 1)
+        y_test = y_test.reshape(-1, 1)
+
+        # reverse transform both
+        predicted_blood_sugar = Standard_Vars.sc.inverse_transform(predicted_blood_sugar)
+        y_test = Standard_Vars.sc.inverse_transform(y_test)
+
         return Model_Assessment.accuracy_finder(predicted_blood_sugar, y_test)
+
 
         
     @staticmethod

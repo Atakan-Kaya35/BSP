@@ -59,7 +59,7 @@ def lambda_handler(event, context):
 
         # Step 1: Get Dexcom readings
         dexcom = Dexcom(username, password, ous=True)
-        glucose_readings = dexcom.get_glucose_readings()
+        glucose_readings = dexcom.get_glucose_readings(max_count = 12)
         prevs = np.array([
             [float(glucose_readings[i].value), 
             # Original: tod exemption try
@@ -96,7 +96,9 @@ def lambda_handler(event, context):
         # if you need to test a new set of models manuelly download from s3 etc and place inside the tmp folder as zip file
         # (there is another change at the download_from_s3 function about the making sure the tmp directory exists)
         zip_file = f"/tmp/{username}_data.zip"
-        Cloud_Storage.download_from_s3(f"{username}/{username}_data.zip", zip_file)
+        if not os.path.exists(zip_file):
+            Cloud_Storage.download_from_s3(f"{username}/{username}_data.zip", zip_file)
+            
         # first read the metadata file 
         metadata_file = f'{username}_metadata.json'
         with zipfile.ZipFile(zip_file, 'r') as zip_ref:
@@ -106,12 +108,12 @@ def lambda_handler(event, context):
             metadata = list(json.load(file).values())
 
         # metadata[0] contains how many models there are
-
-
-        with zipfile.ZipFile(zip_file, 'r') as zip_ref:
-            for i in range(1, metadata[0]+1):
-                zip_ref.extract(f'{username}_{i}_scores.json', '/tmp/')
-                zip_ref.extract(f"{username}_{i}.h5", '/tmp/')
+        model_paths = [f"/tmp/{username}_{i}.h5" for i in range(1, metadata[0]+1)]
+        if not all(os.path.exists(p) for p in model_paths):
+            with zipfile.ZipFile(zip_file, 'r') as zip_ref:
+                for i in range(1, metadata[0]+1):
+                    zip_ref.extract(f"{username}_{i}.h5", '/tmp/')
+                    zip_ref.extract(f"{username}_{i}_scores.json", '/tmp/')
 
         indic_score_list = []
 

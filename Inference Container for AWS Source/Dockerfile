@@ -4,8 +4,9 @@ FROM public.ecr.aws/lambda/python:3.11
 # Set working directory
 WORKDIR /var/task
 
-# Copy your Python script and .h5 files into the container
-COPY 67_acc_model(12,50,24,10).h5 .
+# Copy your Python script and .h5 files into the container,
+# The requirement for this backup was no longer there
+#COPY 67_acc_model(12,50,24,10).h5 .
 
 # Install Python dependencies
 COPY requirements.txt .

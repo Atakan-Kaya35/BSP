@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import logging
 from sklearn.preprocessing import MinMaxScaler
-from pyified_resources import Models
+#from pyified_resources import Models
 from pyified_resources import Standard_Vars
 from bsp_cloud_lib import Cloud_Storage
 
@@ -17,7 +17,7 @@ from bsp_cloud_lib import Cloud_Storage
 class Pred_Tools():
 
     @staticmethod
-    def many_model_predict(values, models = Models.MODEL_MIX):
+    def many_model_predict(values, models = None):
         """
         Predicts the values using a bag of models
 
@@ -46,7 +46,7 @@ class Pred_Tools():
         return predicted_blood_sugar, preds
 
 
-    def pred_next_arbitrary(past_values, wanted_history = Standard_Vars.FIVE_MIN_INTERVAL, interval_num = 3, models = Models.MODEL_MIX):
+    def pred_next_arbitrary(past_values, wanted_history = Standard_Vars.FIVE_MIN_INTERVAL, interval_num = 3, models = None):
         """
         Predicts the next arbitrary number of bs values at given context
 
