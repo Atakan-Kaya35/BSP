@@ -4,6 +4,7 @@ import traceback
 
 from bsp_util import Model_Creation
 from pyified_resources import Standard_Vars
+from config import Config
 
 def main():
     """
@@ -14,8 +15,11 @@ def main():
     the format of the .h5 files and the input that they expect is [blood sugar, TOD]
     """
     parser = argparse.ArgumentParser(description="Trigger model training for a specific user.")
-    # LOCAL: if username is required need to specify in console, if debug needed make required = False
-    parser.add_argument('--username', required=True, help='The username associated with the training dataset in S3.')
+
+    if Config.IS_LOCAL:
+        parser.add_argument('--username', required=False, default = "atakanka350@gmail.com", help='The username associated with the training dataset in S3.')
+    else:
+        parser.add_argument('--username', required=True, help='The username associated with the training dataset in S3.')
     parser.add_argument('--num_of_models', type=int, default=2, help='Number of models to generate.')
     parser.add_argument('--epochs', type=int, default=7, help='Number of epochs per training loop.')
     parser.add_argument('--batch_size', type=int, default=24, help='Batch size for training.')
@@ -33,7 +37,7 @@ def main():
     Standard_Vars.initialize(args.seq_len)
 
     print("Parsed args:", vars(args))
-#%%
+
     try:
         logger.info(f"Starting training for user: {args.username}")
         message, status_code = Model_Creation.full_model_creation(

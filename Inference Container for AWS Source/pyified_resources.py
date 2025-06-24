@@ -26,21 +26,6 @@ class Standard_Vars:
         cls.sc.fit(values)
 
         # connect to db
-        # TODO: connection not made since its auto ending by the server-side abrupts operations
-        """ try:
-            cls.mydb = mysql.connector.connect(
-                host="***REDACTED***",
-                user="***REDACTED***",
-                password="***REDACTED-ROTATED-CREDENTIAL***",
-                database="***REDACTED***",
-                connect_timeout=6000
-            )
-            
-            cls.mycursor = cls.mydb.cursor(buffered=True)
-
-            print("Connected successfully!")
-
-        except Exception as e:
-            print(f"Error connecting to MySQL: {e}") """
+        # TODO: sql db for user tracking
 
 

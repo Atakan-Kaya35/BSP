@@ -1,8 +1,9 @@
 import boto3
 import os
+from config import Config
 
 class Cloud_Storage:
-    def upload_to_s3(local_path, s3_key, bucket_name = "bspuserartifacts"):
+    def upload_to_s3(local_path, s3_key, bucket_name = Config.S3_BUCKET):
         """
         Uploads a file from the local system to a specified S3 bucket and key.
 
@@ -15,10 +16,10 @@ class Cloud_Storage:
             None
         """
         s3 = boto3.client('s3')
-        s3.upload_file(local_path, s3_key, bucket_name = "bspuserartifacts")
+        s3.upload_file(local_path, s3_key, bucket_name = Config.S3_BUCKET)
         print(f"Uploaded {local_path} to s3://{bucket_name}/{s3_key}")
 
-    def download_from_s3(s3_key, local_path, bucket_name = "bspuserartifacts"):
+    def download_from_s3(s3_key, local_path, bucket_name = Config.S3_BUCKET):
         """
         Downloads a file from S3 to a specified local path.
 

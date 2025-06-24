@@ -12,8 +12,6 @@ from sklearn.preprocessing import MinMaxScaler
 from pyified_resources import Standard_Vars
 from bsp_cloud_lib import Cloud_Storage
 
-
-
 class Pred_Tools():
 
     @staticmethod

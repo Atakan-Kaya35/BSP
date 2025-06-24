@@ -8,6 +8,8 @@ from pydexcom import Dexcom
 from bsp_util import Pred_Tools, Model_Assessment, Communication, Standard_Vars
 from bsp_cloud_lib import Cloud_Storage
 import numpy as np
+from config import Config
+from pathlib import Path
 
 # Initialize global state
 past = [0.0] * 7
@@ -26,7 +28,7 @@ def lambda_handler(event, context):
     - JSON result with prediction and indicators
     """
     
-    # An options tyoe http call in a rest api requires special treatment, 
+    # An options type http call in a rest api requires special treatment, 
     # if the lambda function switches to a rest api from a https api recponsider code
     """if event.get("httpMethod") == "OPTIONS":
         return {
@@ -40,15 +42,14 @@ def lambda_handler(event, context):
         }"""
     
     try:
-        # LOCAL: manuelly complete this
-        """username = "atakanka350@gmail.com"
-        password = "***REDACTED-ROTATED-CREDENTIAL***"
-        """ 
-        body = json.loads(event['body'])
-        username = body.get('username')
-        password = body.get('password')
-        # /LOCAL
-        
+        if Config.IS_LOCAL:
+            username = "atakanka350@gmail.com"
+            password = "***REDACTED-ROTATED-CREDENTIAL***"
+        else:
+            body = json.loads(event['body'])
+            username = body.get('username')
+            password = body.get('password')
+                
         if not username or not password:
             return {
                 "statusCode": 400,
@@ -69,60 +70,43 @@ def lambda_handler(event, context):
         ])[::-1] 
         print(prevs)
 
-        # TODO: Unnecessary for the AWS Lambda implementation as the data is just got anyway, no hist to compare with
-        # Step 2: Handle skipped values
-        """ skipped = 0
-        if past[-6:] != prevs[-7:-1]:
-            if past[-6:] != prevs[-8:-2]:
-                if past[-6:] != prevs[-9:-3]:
-                    if past[-6:] != prevs[-10:-4]:
-                        pass
-                    else:
-                        skipped = 3
-                else:
-                    skipped = 2
-            else:
-                skipped = 1
-
-        # was_predicted is a list of the previous predictions, this for loop puts an empty list in the place of 
-        # the prediction that should have heppened but did not due to the lag in the dexcom system
-        for _ in range(skipped):
-            for i in range(1, Standard_Vars.REG_SHAPE + 1):
-                was_predicted[i - 1] = was_predicted[i]
-            was_predicted[-1] = []
- """
         # Step 3: Download and extract zip
-        # LOCAL: test the paths are made from / to \\ , comment out the s3 get method as it is not needed
-        # if you need to test a new set of models manuelly download from s3 etc and place inside the tmp folder as zip file
-        # (there is another change at the download_from_s3 function about the making sure the tmp directory exists)
-        zip_file = f"/tmp/{username}_data.zip"
-        if not os.path.exists(zip_file):
-            Cloud_Storage.download_from_s3(f"{username}/{username}_data.zip", zip_file)
-            
-        # first read the metadata file 
-        metadata_file = f'{username}_metadata.json'
-        with zipfile.ZipFile(zip_file, 'r') as zip_ref:
-            zip_ref.extract(metadata_file, '/tmp/')
+        #whether local or in production, there must be a tmp folder in the same directory as the scrpit that contains the 
+        #artifacts needed, in this case the zip file
+        zip_file = Config.TMP_DIR / f"{username}_data.zip"
+        if not zip_file.exists() and not Config.IS_LOCAL:
+            Cloud_Storage.download_from_s3(f"{username}/{username}_data.zip", str(zip_file))
 
-        with open(f"/tmp/{metadata_file}", 'r') as file:
+        #download json metadata file
+        metadata_filename = f"{username}_metadata.json"
+        metadata_path = Config.TMP_DIR / metadata_filename
+        with zipfile.ZipFile(zip_file, 'r') as zip_ref:
+            zip_ref.extract(metadata_filename, path=str(Config.TMP_DIR))
+        #read and extract the metadata files into a list
+        with open(metadata_path, 'r') as file:
             metadata = list(json.load(file).values())
 
         # metadata[0] contains how many models there are
-        model_paths = [f"/tmp/{username}_{i}.h5" for i in range(1, metadata[0]+1)]
-        if not all(os.path.exists(p) for p in model_paths):
+        model_paths = [Config.TMP_DIR / f"{username}_{i}.h5" for i in range(1, metadata[0]+1)]
+        # if not all the models exist in the desired path
+        if not all(p.exists() for p in model_paths):
             with zipfile.ZipFile(zip_file, 'r') as zip_ref:
                 for i in range(1, metadata[0]+1):
-                    zip_ref.extract(f"{username}_{i}.h5", '/tmp/')
-                    zip_ref.extract(f"{username}_{i}_scores.json", '/tmp/')
-
-        indic_score_list = []
+                    zip_ref.extract(f"{username}_{i}.h5", path=str(Config.TMP_DIR))
+                    zip_ref.extract(f"{username}_{i}_scores.json", path=str(Config.TMP_DIR))
 
         # Step 4: Load model and scores
-        personal_model = [load_model(f"/tmp/{username}_{i}.h5") for i in range(1, metadata[0]+1)]
+        personal_model = [
+            load_model(str(Config.TMP_DIR / f"{username}_{i}.h5"))
+            for i in range(1, metadata[0]+1)
+        ]
+        #load the scores of the models into a model in order
+        indic_score_list = []
         for i in range(1, metadata[0]+1):
-            with open(f"/tmp/{username}_{i}_scores.json", 'r') as file:
+            score_path = Config.TMP_DIR / f"{username}_{i}_scores.json"
+            with open(score_path, 'r') as file:
                 indic_score_list.append(list(json.load(file).values()))
-        # /LOCAL
+
 
         # Step 5: Run prediction
         nexts, indic_data = Pred_Tools.pred_next_arbitrary(prevs.copy(), 
@@ -191,6 +175,5 @@ def lambda_handler(event, context):
     print("Lambda test output:")
     print(json.dumps(response, indent=4)) """
 
-#LOCAL: DO NOT call the function otherwise
-#lambda_handler(0,0)
-# /LOCAL
+if Config.IS_LOCAL:
+    lambda_handler(0,0)

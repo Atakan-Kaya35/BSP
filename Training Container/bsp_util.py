@@ -9,7 +9,8 @@ from pyified_resources import Standard_Vars
 from bsp_cloud_lib import Cloud_Storage
 from sklearn.model_selection import train_test_split
 from keras.callbacks import EarlyStopping
-
+from config import Config
+from pathlib import Path
 
 class Pred_Tools():
     def pred_next_three(past_values, wanted_history=Standard_Vars.FIVE_MIN_INTERVAL, model=None):
@@ -356,6 +357,9 @@ class Model_Creation():
                 # check if the model is acceptable
                 curr_model_acc = Model_Assessment.model_accuracy_finder(regressor, X_test, y_test)
                 if curr_model_acc > acceptable_acc_score:
+                    # Ensure tmp directory exists
+                    Config.TMP_DIR.mkdir(parents=True, exist_ok=True)
+                    
                     print("Model ACCEPTED with accuracy:", curr_model_acc)
                     num_of_model_till_done -= 1
                     num_models_accepted += 1
@@ -371,12 +375,12 @@ class Model_Creation():
                         "plateau": scores[1], 
                         "trend change": scores[2]
                     }
-                    scores_file = f"{username}_{num_models_accepted}_scores.json"
-                    with open(scores_file, 'w') as f:
-                        json.dump(scores, f)
+                    score_path = Config.TMP_DIR / f"{username}_{num_models_accepted}_scores.json"
+                    with open(score_path, 'w') as f:
+                        json.dump(scores, f)  
 
-                    regressor_file = f"{username}_{num_models_accepted}.h5"
-                    regressor.save(regressor_file)
+                    regressor_path = Config.TMP_DIR / f"{username}_{num_models_accepted}.h5"
+                    regressor.save(str(regressor_path))
                 else:
                     print("Model REJECTED with accuracy:", curr_model_acc)
                                     
@@ -384,24 +388,29 @@ class Model_Creation():
 
             if num_models_accepted > 0:
                 # Create a zip file containing both the regressor and the scores
-                zip_file = f"{username}_data.zip"
-                output_zip_path = f"/tmp/{username}_data.zip"
+                zip_filename = f"{username}_data.zip"
+                output_zip_path = Config.TMP_DIR / zip_filename
+
                 metadata = {"number of models": num_models_accepted}
-                metadata_file = f"{username}_metadata.json"
+                metadata_filename = f"{username}_metadata.json"
+                metadata_file_path = Config.TMP_DIR / metadata_filename
                 
-                with open(metadata_file, 'w') as f:
+                with open(metadata_file_path, 'w') as f:
                     json.dump(metadata, f)
                     
+                # Zip everything from absolute paths
                 with zipfile.ZipFile(output_zip_path, 'w', compression=zipfile.ZIP_DEFLATED) as zipf:
                     for i in range(1, num_models_accepted + 1):
-                        zipf.write(f"{username}_{i}.h5")
-                        zipf.write(f"{username}_{i}_scores.json")
-                    zipf.write(metadata_file)
-                    zipf.write(source_csv_file_name)
+                        h5_path = Config.TMP_DIR / f"{username}_{i}.h5"
+                        score_path = Config.TMP_DIR / f"{username}_{i}_scores.json"
+                        zipf.write(h5_path, arcname=h5_path.name)
+                        zipf.write(score_path, arcname=score_path.name)
+                    zipf.write(metadata_file_path, arcname=metadata_file_path.name)
+                    zipf.write(source_csv_file_name, arcname=Path(source_csv_file_name).name)
 
                 # Upload the zip file to the cloud
-                # LOCAL: this gets commented out
-                Cloud_Storage.upload_to_s3(f"{username}/{zip_file}", output_zip_path)
+                if not Config.IS_LOCAL:                
+                    Cloud_Storage.upload_to_s3(f"{username}/{zip_filename}", str(output_zip_path))
 
                 # CAUTION: the following commands are erased to save costs and since the training 
                 # container is very disposable, a good and long term arhitecture should leave no
@@ -462,11 +471,11 @@ class Model_Creation():
 
         """
         try:
-            # LOCAL: This gets subbed for following
-            #input_csv_path = f".\{username}.csv"
-            input_csv_path = f"/tmp/{username}.csv"
-            Cloud_Storage.download_from_s3(f"{username}/{username}.csv", input_csv_path)
-            print("it is the new")
+            if Config.IS_LOCAL:
+                input_csv_path = f".\{username}.csv"
+            else:
+                input_csv_path = Config.TMP_DIR / f"{username}.csv"
+                Cloud_Storage.download_from_s3(f"{username}/{username}.csv", str(input_csv_path))
 
             # Call with extended params
             Model_Creation.train_send_model(
