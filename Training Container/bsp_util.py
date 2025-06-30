@@ -2,6 +2,7 @@ import json
 import os
 import traceback
 import zipfile
+import shutil
 import numpy as np
 import pandas as pd
 import logging
@@ -11,6 +12,7 @@ from sklearn.model_selection import train_test_split
 from keras.callbacks import EarlyStopping
 from config import Config
 from pathlib import Path
+import tensorflow as tf
 
 class Pred_Tools():
     def pred_next_three(past_values, wanted_history=Standard_Vars.FIVE_MIN_INTERVAL, model=None):
@@ -379,8 +381,16 @@ class Model_Creation():
                     with open(score_path, 'w') as f:
                         json.dump(scores, f)  
 
-                    regressor_path = Config.TMP_DIR / f"{username}_{num_models_accepted}.h5"
+                    regressor_path = Config.TMP_DIR / f"{username}_{num_models_accepted}_model"
                     regressor.save(str(regressor_path))
+                    
+                    # Export to .tflite
+                    converter = tf.lite.TFLiteConverter.from_saved_model(str(regressor_path))
+                    tflite_model = converter.convert()
+                    
+                    tflite_path = Config.TMP_DIR / f"{username}_{num_models_accepted}.tflite"
+                    with open(tflite_path, 'wb') as f:
+                        f.write(tflite_model)
                 else:
                     print("Model REJECTED with accuracy:", curr_model_acc)
                                     
@@ -401,13 +411,23 @@ class Model_Creation():
                 # Zip everything from absolute paths
                 with zipfile.ZipFile(output_zip_path, 'w', compression=zipfile.ZIP_DEFLATED) as zipf:
                     for i in range(1, num_models_accepted + 1):
-                        h5_path = Config.TMP_DIR / f"{username}_{i}.h5"
+                        # Paths
+                        model_dir = Config.TMP_DIR / f"{username}_{i}_model"
+                        model_zip_path = Config.TMP_DIR / f"{username}_{i}_model.zip"
                         score_path = Config.TMP_DIR / f"{username}_{i}_scores.json"
-                        zipf.write(h5_path, arcname=h5_path.name)
+                        tflite_path = Config.TMP_DIR / f"{username}_{i}.tflite"
+
+                        # Zip SavedModel folder into .zip
+                        shutil.make_archive(str(model_zip_path).replace('.zip', ''), 'zip', model_dir)
+
+                        # Add zipped model + score file to output zip
+                        zipf.write(model_zip_path, arcname=model_zip_path.name)
                         zipf.write(score_path, arcname=score_path.name)
+                        zipf.write(tflite_path, arcname=tflite_path.name)
+
                     zipf.write(metadata_file_path, arcname=metadata_file_path.name)
                     zipf.write(source_csv_file_name, arcname=Path(source_csv_file_name).name)
-
+                    
                 # Upload the zip file to the cloud
                 if not Config.IS_LOCAL:                
                     Cloud_Storage.upload_to_s3(f"{username}/{zip_filename}", str(output_zip_path))
@@ -417,6 +437,7 @@ class Model_Creation():
                 # file behind and this is not a best practice, through it is for this use case 
                 # Delete the local files
                 """for i in range(1,num_models_accepted + 1):
+                #legacy now
                     os.remove(f"{username}_{i}.h5")
                     os.remove(f"{username}_{i}_scores.json")
                 os.remove(metadata_file)

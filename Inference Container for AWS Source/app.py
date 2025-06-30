@@ -3,13 +3,13 @@ import os
 import traceback
 import zipfile
 import logging
-from keras.models import load_model
 from pydexcom import Dexcom
 from bsp_util import Pred_Tools, Model_Assessment, Communication, Standard_Vars
 from bsp_cloud_lib import Cloud_Storage
 import numpy as np
 from config import Config
 from pathlib import Path
+import tflite_runtime.interpreter as tflite
 
 # Initialize global state
 past = [0.0] * 7
@@ -87,19 +87,22 @@ def lambda_handler(event, context):
             metadata = list(json.load(file).values())
 
         # metadata[0] contains how many models there are
-        model_paths = [Config.TMP_DIR / f"{username}_{i}.h5" for i in range(1, metadata[0]+1)]
+        model_paths = [Config.TMP_DIR / f"{username}_{i}.tflite" for i in range(1, metadata[0]+1)]
         # if not all the models exist in the desired path
         if not all(p.exists() for p in model_paths):
             with zipfile.ZipFile(zip_file, 'r') as zip_ref:
                 for i in range(1, metadata[0]+1):
-                    zip_ref.extract(f"{username}_{i}.h5", path=str(Config.TMP_DIR))
+                    zip_ref.extract(f"{username}_{i}.tflite", path=str(Config.TMP_DIR))
                     zip_ref.extract(f"{username}_{i}_scores.json", path=str(Config.TMP_DIR))
 
         # Step 4: Load model and scores
-        personal_model = [
-            load_model(str(Config.TMP_DIR / f"{username}_{i}.h5"))
-            for i in range(1, metadata[0]+1)
-        ]
+        personal_model = []
+        for i in range(1, metadata[0] + 1):
+            tflite_path = Config.TMP_DIR / f"{username}_{i}.tflite"
+            interpreter = tflite.Interpreter(model_path=str(tflite_path))
+            interpreter.allocate_tensors()
+            personal_model.append(interpreter)
+            
         #load the scores of the models into a model in order
         indic_score_list = []
         for i in range(1, metadata[0]+1):

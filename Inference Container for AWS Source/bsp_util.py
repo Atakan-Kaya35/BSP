@@ -32,11 +32,17 @@ class Pred_Tools():
             # due to the [blood sugar, TOD], TOD is set to the next 5 minutes
             # TODO: Should it be 2 * values[0][1] - values[1][1] instead, is the time going from right to left or left to right/ TIME INCREASES AND THE PREDİCTİON IS MADE SO THE FİRST ELEMNT
             # IN THE VALUES LİST IS THE FARTHEST FROM THE PRESENT
-            a = model.predict(values)
-            preds.append([model.predict(values)[0][0] 
-                          # Original: tod exemption
-                          #,2 * values[0][-1][1] - values[0][-2][1]
-                          ])
+            input_details = model.get_input_details()
+            output_details = model.get_output_details()
+
+            # Ensure float32 dtype for TFLite
+            model.set_tensor(input_details[0]['index'], values.astype(np.float32))
+            model.invoke()
+            output = model.get_tensor(output_details[0]['index'])
+
+            # TODO: INPUT FORMAT SPECIFIC, make more flexible, preds.append([x for x in output[0]])
+            preds.append([output[0][0]])
+
         predicted_blood_sugar = [np.mean(preds[:][0], axis=0)
                                  # Original: tod exemption
                                  #, preds[0][1]
