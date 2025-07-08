@@ -6,8 +6,9 @@ class Standard_Vars:
     FIVE_MIN_INTERVAL = 12
     REG_SHAPE = 12
     # Original is 2 as it is bsv, tod
-    INPUT_DIM = 1
+    INPUT_DIM = 3
     sc = None
+    sc_time = None
     mydb = None
 
     @classmethod
@@ -17,8 +18,12 @@ class Standard_Vars:
         
         # Initialize scaler for both glucose (40-400) and time (0-1)
         # 39 to prevent division by 0 when there are 40 the real value vecomes 0 which causes error, one below 40 makes everything above 0
-        values = np.array([
+        sugar_values = np.array([
             [39], [400]
+        ])
+        
+        time_values = np.array([
+            [-1], [1]
         ])
 
         # Original is this, testing with no TOD
@@ -28,7 +33,10 @@ class Standard_Vars:
         ])"""
 
         cls.sc = MinMaxScaler(feature_range=(0, 1))
-        cls.sc.fit(values)
+        cls.sc.fit(sugar_values)
+        
+        cls.sc_time = MinMaxScaler(feature_range=(0,1))
+        cls.sc_time.fit(time_values)
         
         evaluation_datasets = []
         for file in [
@@ -38,10 +46,9 @@ class Standard_Vars:
         ]:
             data = pd.read_csv(file).values  # shape: (n_samples, 1) or (n_samples,)
 
-            # Original: modified for TOD exemption
-            #transformed = [[[value, 0.5] for value in row] for row in data]
-            transformed = [[[value] for value in row] for row in data]
-        
+            # Original: the median point
+            transformed = [[cls.transformed_point(cls, cls.medianalyze_point(value)) for value in row] for row in data]
+            
             evaluation_datasets.append(transformed)
 
 
@@ -50,9 +57,12 @@ class Standard_Vars:
     
     def medianalyze_point(bsv):
         """
-        Function that returns the median data point for generating scores etc.
+        Function that returns the median data point UNSCALED for generating scores etc.
         Used in contexts where only the bsv matters for the end result
         """
-        return [bsv]
+        return [bsv, 0, 0]
+    
+    def transformed_point(cls, point):
+        return [cls.sc.transform([[point[0]]]), cls.sc_time.transform([[point[1]]]), cls.sc_time.transform([[point[2]]])]
 
 

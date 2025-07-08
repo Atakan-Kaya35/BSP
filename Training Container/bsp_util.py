@@ -163,8 +163,7 @@ class Model_Assessment():
                     input_data = np.array(input_data)  # Convert to numpy array
                     
                     # Scale the input data
-                    scaled_data = Standard_Vars.sc.transform(input_data)
-                    X_test = scaled_data.reshape(1, Standard_Vars.REG_SHAPE, Standard_Vars.INPUT_DIM)
+                    X_test = input_data.reshape(1, Standard_Vars.REG_SHAPE, Standard_Vars.INPUT_DIM)
                     
                     # Make three predictions recursively
                     predictions = []
@@ -246,8 +245,9 @@ class Model_Creation():
             CSV_METADATA_SKIP = 25
             TIME_COL = "Zaman damgası (GG-AA-YYYY/ss:dd:sn)"
             GLUCOSE_COL = "Glikoz Değeri (mg/dL)"
-            TEST_SIZE = 0.2  # Percentage for test split
-            VAL_SIZE = 0.2   # Percentage of training for validation
+            TEST_SPLIT_RATIO = 0.1  # e.g., 15% of data for final testing
+            VAL_SPLIT_RATIO = 0.1            
+            EARLY_STOP_PATIENCE = 10
             
             # default file name is the username of user
             if source_csv_file_name is None:
@@ -265,21 +265,22 @@ class Model_Creation():
                 })
                 df_raw[GLUCOSE_COL] = pd.to_numeric(df_raw[GLUCOSE_COL], errors="coerce")
                 
-                # Convert datetime and extract time features
+                # Convert datetime and extract time-of-day
                 df_raw[TIME_COL] = pd.to_datetime(df_raw[TIME_COL], errors='coerce')
                 df_raw["hour"] = df_raw[TIME_COL].dt.hour
                 df_raw["minute"] = df_raw[TIME_COL].dt.minute
-                df_raw["time_of_day"] = (df_raw["hour"] * 60 + df_raw["minute"]) / 1440
+                df_raw["sin_time"] = np.sin(2 * np.pi * (df_raw["hour"] * 60 + df_raw["minute"]) / 1440)
+                df_raw["cos_time"] = np.cos(2 * np.pi * (df_raw["hour"] * 60 + df_raw["minute"]) / 1440)
                 
                 #TODO: this is not acceptable since missing in time series cannot just be dropped
                 # Drop rows with missing values
-                df_clean = df_raw.dropna(subset=[GLUCOSE_COL, "time_of_day"]).iloc[CSV_METADATA_SKIP:]
-                
+                df_clean = df_raw.dropna(subset=[GLUCOSE_COL, "sin_time", "cos_time"]).iloc[CSV_METADATA_SKIP:]                
 
                 # TODO: Original is:
                 #return df_clean[[GLUCOSE_COL, "time_of_day"]].values
                 # below is the modification to exclude the time of the day value for testing
-                return df_clean[[GLUCOSE_COL]].values  # remove TOD
+                return df_clean
+                #[[GLUCOSE_COL]].values  # remove TOD
 
             # Create sequences with time features
             def create_sequences(data, seq_length):
@@ -291,22 +292,31 @@ class Model_Creation():
                 return np.array(X), np.array(y)
 
             # Main execution
-            data = load_and_preprocess_data()
-
-            # Scale all features together to prevent data leakage
-            scaled_data = Standard_Vars.sc.transform(data)
+            df_clean = load_and_preprocess_data()
+            
+            glucose_scaled = Standard_Vars.sc.transform(df_clean[[GLUCOSE_COL]])
+            sin_scaled = Standard_Vars.sc_time.transform(df_clean[["sin_time"]])
+            cos_scaled = Standard_Vars.sc_time.transform(df_clean[["cos_time"]])
+            
+            # Combine features: [glucose, sin_time, cos_time]
+            data = np.hstack((glucose_scaled, sin_scaled, cos_scaled))
 
             # Create sequences
-            X, y = create_sequences(scaled_data, Standard_Vars.FIVE_MIN_INTERVAL)
+            X_sequences_all, y_sequences_all = create_sequences(data, Standard_Vars.FIVE_MIN_INTERVAL)
 
-            # Split into train and test sets (preserving temporal order)
-            train_size = int(len(X) * (1 - 0.9))
-            X_train, X_test = X[:train_size], X[train_size:]
-            y_train, y_test = y[:train_size], y[train_size:]
+           # 1. Split into Training+Validation set and Test set (preserving temporal order)
+            test_size = int(len(X_sequences_all) * TEST_SPLIT_RATIO)
+            X_train_val = X_sequences_all[:-test_size]
+            y_train_val = y_sequences_all[:-test_size]
+            X_test = X_sequences_all[-test_size:]
+            y_test = y_sequences_all[-test_size:]
 
-            # Further split training set for validation
-            X_train, X_val, y_train, y_val = train_test_split(
-                X_train, y_train, test_size=VAL_SIZE, shuffle=False)
+            # 2. Split Training+Validation set into Training set and Validation set (preserving temporal order)
+            val_size = int(len(X_train_val) * VAL_SPLIT_RATIO)
+            X_train = X_train_val[:-val_size]
+            y_train = y_train_val[:-val_size]
+            X_val = X_train_val[-val_size:]
+            y_val = y_train_val[-val_size:]
 
             # Importing the Keras libraries and packages
             from keras.models import Sequential
@@ -316,45 +326,34 @@ class Model_Creation():
 
             while num_of_model_till_done > 0 and remaining_tries > 0:
                 # Initialising the RNN
-                regressor = Sequential()
+                regressor = Sequential([
+                    tf.keras.layers.Input(shape=(12, 3), name='input'),
+                    tf.keras.layers.LSTM(20, time_major=False, return_sequences=True),
+                    tf.keras.layers.Flatten(),
+                    tf.keras.layers.Dense(1, activation=tf.nn.softmax, name='output')
+                ])
 
-                # Adding the first LSTM layer and some Dropout regularisation
-                regressor.add(LSTM(
-                    units=50, 
-                    return_sequences=True, 
-                    input_shape=(X_train.shape[1], X_train.shape[2])
-                ))
-                regressor.add(Dropout(0.2))
-
-                # Adding num_of_layers LSTM layers and some Dropout regularisation
-                for i in range(num_of_layers):
-                    regressor.add(LSTM(units=50, return_sequences=True))
-                    regressor.add(Dropout(0.2))
-                    
-                regressor.add(LSTM(units=50))
-                regressor.add(Dropout(0.2))
-
-                # Adding the output layer
-                regressor.add(Dense(units=1))
-
-                # Compiling the RNN
+                # Compile model
                 regressor.compile(optimizer='adam', loss='mean_squared_error')
 
+                # Early stopping
                 early_stop = EarlyStopping(
-                    monitor='val_loss', 
-                    patience=6, 
+                    monitor='val_loss',
+                    patience=EARLY_STOP_PATIENCE,
                     restore_best_weights=True
                 )
 
+                # Train model
                 regressor.fit(
-                    X_train, 
-                    y_train, 
-                    epochs=EPOCHS, 
+                    X_train,
+                    y_train,
+                    epochs=EPOCHS,
                     batch_size=BATCH_SIZE,
                     validation_data=(X_val, y_val),
                     callbacks=[early_stop],
                     verbose=1
                 )
+
 
                 # check if the model is acceptable
                 curr_model_acc = Model_Assessment.model_accuracy_finder(regressor, X_test, y_test)
@@ -382,10 +381,14 @@ class Model_Creation():
                         json.dump(scores, f)  
 
                     regressor_path = Config.TMP_DIR / f"{username}_{num_models_accepted}_model"
+                    # save for tf 13, export for tf 19
                     regressor.save(str(regressor_path))
                     
                     # Export to .tflite
-                    converter = tf.lite.TFLiteConverter.from_saved_model(str(regressor_path))
+                    converter = tf.lite.TFLiteConverter.from_keras_model(regressor)
+                    converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS]
+                    converter._experimental_lower_tensor_list_ops = False
+                    converter._experimental_allow_all_select_tf_ops = False  # ✴️ Prevent fallback to full TF
                     tflite_model = converter.convert()
                     
                     tflite_path = Config.TMP_DIR / f"{username}_{num_models_accepted}.tflite"
