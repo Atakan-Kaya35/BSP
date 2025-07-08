@@ -248,7 +248,7 @@ class Model_Creation():
             GLUCOSE_COL = "Glikoz Değeri (mg/dL)"
             TEST_SPLIT_RATIO = 0.1  # e.g., 15% of data for final testing
             VAL_SPLIT_RATIO = 0.1            
-            EARLY_STOP_PATIENCE = 10
+            EARLY_STOP_PATIENCE = 3
             
             # default file name is the username of user
             if source_csv_file_name is None:
@@ -322,9 +322,10 @@ class Model_Creation():
             # Importing the Keras libraries and packages
             from tensorflow.keras import Input, Model
             from keras.layers import Dense
-            from keras.layers import LSTM
+            from keras.layers import GRU
             from keras.layers import Dropout
             from keras.models import Sequential
+            from keras.losses import MeanSquaredError
 
             while num_of_model_till_done > 0 and remaining_tries > 0:
                 
@@ -337,29 +338,29 @@ class Model_Creation():
                     name="input_layer"
                 ))
 
-                # LSTM Layers (EXACTLY AS IN YOUR ORIGINAL CODE)
-                # First LSTM
-                regressor.add(LSTM(
+                # GRU Layers (EXACTLY AS IN YOUR ORIGINAL CODE)
+                # First GRU
+                regressor.add(GRU(
                     units=50,
                     return_sequences=True,
-                    name="lstm_1"
+                    name="GRU_1"
                 ))
                 regressor.add(Dropout(0.2, name="dropout_1"))
 
-                # Additional LSTMs
-                for i in range(num_of_layers - 1):
-                    regressor.add(LSTM(
+                # Additional GRUs
+                for i in range(max(0, num_of_layers - 2)):
+                    regressor.add(GRU(
                         units=50,
                         return_sequences=True,
-                        name=f"lstm_{i+2}"
+                        name=f"GRU_{i+2}"
                     ))
                     regressor.add(Dropout(0.2, name=f"dropout_{i+2}"))
 
-                # Final LSTM (no return_sequences)
-                regressor.add(LSTM(
+                # Final GRU (no return_sequences)
+                regressor.add(GRU(
                     units=50,
-                    return_sequences=False,  # Critical for single-step prediction
-                    name="lstm_final"
+                    return_sequences=False,  # VITAL/Critical for single-step prediction
+                    name="GRU_final"
                 ))
                 regressor.add(Dropout(0.2, name="dropout_final"))
 
@@ -367,10 +368,19 @@ class Model_Creation():
                 regressor.add(Dense(units=1, name="output"))
 
                 # --- Training (Unchanged from your original) ---
-                regressor.compile(optimizer='adam', loss='mse')
-                early_stop = EarlyStopping(monitor='val_loss', patience=EARLY_STOP_PATIENCE)
+                regressor.compile(optimizer='adam', loss=MeanSquaredError())
+                early_stop = EarlyStopping(monitor='val_loss', patience=EARLY_STOP_PATIENCE, restore_best_weights=True)
                 regressor.fit(X_train, y_train, validation_data=(X_val, y_val),
                             epochs=EPOCHS, batch_size=BATCH_SIZE, callbacks=[early_stop])
+
+
+
+
+
+                regressor.save(Config.TMP_DIR / f"{username}_{num_models_accepted}.h5")
+
+
+
 
 
                 # check if the model is acceptable
@@ -402,6 +412,11 @@ class Model_Creation():
                     input_signature = [tf.TensorSpec(shape=input_shape, dtype=tf.float32, name='input')]
 
                     onnx_model_path = Config.TMP_DIR / f"{username}_{num_models_accepted}.onnx"
+                    # 🔒 Freeze all layers to inference mode
+                    regressor.trainable = False
+                    for layer in regressor.layers:
+                        layer.trainable = False
+
                     # Convert to Functional API for proper ONNX export
                     input_tensor = tf.keras.Input(
                         shape=(Standard_Vars.FIVE_MIN_INTERVAL, Standard_Vars.INPUT_DIM),
@@ -422,7 +437,7 @@ class Model_Creation():
                         output_path=str(onnx_model_path)
                     )
                     
-                    print(regressor.summary())  # Should show all LSTM layers
+                    print(regressor.summary())  # Should show all GRU layers
 
                 else:
                     print("Model REJECTED with accuracy:", curr_model_acc)

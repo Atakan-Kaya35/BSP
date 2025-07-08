@@ -21,10 +21,10 @@ def main():
     else:
         parser.add_argument('--username', required=True, help='The username associated with the training dataset in S3.')
     parser.add_argument('--num_of_models', type=int, default=2, help='Number of models to generate.')
-    parser.add_argument('--epochs', type=int, default=7, help='Number of epochs per training loop.')
+    parser.add_argument('--epochs', type=int, default=50, help='Number of epochs per training loop.')
     parser.add_argument('--batch_size', type=int, default=24, help='Batch size for training.')
     parser.add_argument('--remaining_tries', type=int, default=2, help='Maximum training attempts.')
-    parser.add_argument('--num_of_layers', type=int, default=3, help='Maximum training attempts.')
+    parser.add_argument('--num_of_layers', type=int, default=5, help='Maximum training attempts.')
     parser.add_argument('--acceptable_acc_score', type=float, default=0.1, help='Minimum required accuracy.')
     parser.add_argument('--seq_len', type=int, default=12, help='Number of input timesteps')
 
