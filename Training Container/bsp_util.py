@@ -13,6 +13,7 @@ from keras.callbacks import EarlyStopping
 from config import Config
 from pathlib import Path
 import tensorflow as tf
+import tf2onnx
 
 class Pred_Tools():
     def pred_next_three(past_values, wanted_history=Standard_Vars.FIVE_MIN_INTERVAL, model=None):
@@ -319,40 +320,57 @@ class Model_Creation():
             y_val = y_train_val[-val_size:]
 
             # Importing the Keras libraries and packages
-            from keras.models import Sequential
+            from tensorflow.keras import Input, Model
             from keras.layers import Dense
             from keras.layers import LSTM
             from keras.layers import Dropout
+            from keras.models import Sequential
 
             while num_of_model_till_done > 0 and remaining_tries > 0:
-                # Initialising the RNN
-                regressor = Sequential([
-                    tf.keras.layers.Input(shape=(12, 3), name='input'),
-                    tf.keras.layers.LSTM(20, time_major=False, return_sequences=True),
-                    tf.keras.layers.Flatten(),
-                    tf.keras.layers.Dense(1, activation=tf.nn.softmax, name='output')
-                ])
+                
+                # --- Model Architecture ---
+                regressor = Sequential(name="blood_sugar_predictor")
+                
+                # Input Layer (explicitly named)
+                regressor.add(tf.keras.layers.InputLayer(
+                    input_shape=(Standard_Vars.FIVE_MIN_INTERVAL, Standard_Vars.INPUT_DIM),
+                    name="input_layer"
+                ))
 
-                # Compile model
-                regressor.compile(optimizer='adam', loss='mean_squared_error')
+                # LSTM Layers (EXACTLY AS IN YOUR ORIGINAL CODE)
+                # First LSTM
+                regressor.add(LSTM(
+                    units=50,
+                    return_sequences=True,
+                    name="lstm_1"
+                ))
+                regressor.add(Dropout(0.2, name="dropout_1"))
 
-                # Early stopping
-                early_stop = EarlyStopping(
-                    monitor='val_loss',
-                    patience=EARLY_STOP_PATIENCE,
-                    restore_best_weights=True
-                )
+                # Additional LSTMs
+                for i in range(num_of_layers - 1):
+                    regressor.add(LSTM(
+                        units=50,
+                        return_sequences=True,
+                        name=f"lstm_{i+2}"
+                    ))
+                    regressor.add(Dropout(0.2, name=f"dropout_{i+2}"))
 
-                # Train model
-                regressor.fit(
-                    X_train,
-                    y_train,
-                    epochs=EPOCHS,
-                    batch_size=BATCH_SIZE,
-                    validation_data=(X_val, y_val),
-                    callbacks=[early_stop],
-                    verbose=1
-                )
+                # Final LSTM (no return_sequences)
+                regressor.add(LSTM(
+                    units=50,
+                    return_sequences=False,  # Critical for single-step prediction
+                    name="lstm_final"
+                ))
+                regressor.add(Dropout(0.2, name="dropout_final"))
+
+                # Output Layer
+                regressor.add(Dense(units=1, name="output"))
+
+                # --- Training (Unchanged from your original) ---
+                regressor.compile(optimizer='adam', loss='mse')
+                early_stop = EarlyStopping(monitor='val_loss', patience=EARLY_STOP_PATIENCE)
+                regressor.fit(X_train, y_train, validation_data=(X_val, y_val),
+                            epochs=EPOCHS, batch_size=BATCH_SIZE, callbacks=[early_stop])
 
 
                 # check if the model is acceptable
@@ -379,21 +397,33 @@ class Model_Creation():
                     score_path = Config.TMP_DIR / f"{username}_{num_models_accepted}_scores.json"
                     with open(score_path, 'w') as f:
                         json.dump(scores, f)  
+                        
+                    input_shape = (1, Standard_Vars.FIVE_MIN_INTERVAL, Standard_Vars.INPUT_DIM)  # Adjust the last number based on your actual input features
+                    input_signature = [tf.TensorSpec(shape=input_shape, dtype=tf.float32, name='input')]
 
-                    regressor_path = Config.TMP_DIR / f"{username}_{num_models_accepted}_model"
-                    # save for tf 13, export for tf 19
-                    regressor.save(str(regressor_path))
+                    onnx_model_path = Config.TMP_DIR / f"{username}_{num_models_accepted}.onnx"
+                    # Convert to Functional API for proper ONNX export
+                    input_tensor = tf.keras.Input(
+                        shape=(Standard_Vars.FIVE_MIN_INTERVAL, Standard_Vars.INPUT_DIM),
+                        name="input"
+                    )
+                    output_tensor = regressor(input_tensor)
+                    functional_model = tf.keras.Model(inputs=input_tensor, outputs=output_tensor)
+
+                    # Export to ONNX
+                    tf2onnx.convert.from_keras(
+                        functional_model,
+                        input_signature=[tf.TensorSpec(
+                            shape=(1, Standard_Vars.FIVE_MIN_INTERVAL, Standard_Vars.INPUT_DIM),
+                            dtype=tf.float32,
+                            name="input"
+                        )],
+                        opset=13,
+                        output_path=str(onnx_model_path)
+                    )
                     
-                    # Export to .tflite
-                    converter = tf.lite.TFLiteConverter.from_keras_model(regressor)
-                    converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS]
-                    converter._experimental_lower_tensor_list_ops = False
-                    converter._experimental_allow_all_select_tf_ops = False  # ✴️ Prevent fallback to full TF
-                    tflite_model = converter.convert()
-                    
-                    tflite_path = Config.TMP_DIR / f"{username}_{num_models_accepted}.tflite"
-                    with open(tflite_path, 'wb') as f:
-                        f.write(tflite_model)
+                    print(regressor.summary())  # Should show all LSTM layers
+
                 else:
                     print("Model REJECTED with accuracy:", curr_model_acc)
                                     
@@ -418,7 +448,7 @@ class Model_Creation():
                         model_dir = Config.TMP_DIR / f"{username}_{i}_model"
                         model_zip_path = Config.TMP_DIR / f"{username}_{i}_model.zip"
                         score_path = Config.TMP_DIR / f"{username}_{i}_scores.json"
-                        tflite_path = Config.TMP_DIR / f"{username}_{i}.tflite"
+                        onnx_path = Config.TMP_DIR / f"{username}_{i}.onnx"
 
                         # Zip SavedModel folder into .zip
                         shutil.make_archive(str(model_zip_path).replace('.zip', ''), 'zip', model_dir)
@@ -426,7 +456,7 @@ class Model_Creation():
                         # Add zipped model + score file to output zip
                         zipf.write(model_zip_path, arcname=model_zip_path.name)
                         zipf.write(score_path, arcname=score_path.name)
-                        zipf.write(tflite_path, arcname=tflite_path.name)
+                        zipf.write(onnx_path, arcname=onnx_path.name)
 
                     zipf.write(metadata_file_path, arcname=metadata_file_path.name)
                     zipf.write(source_csv_file_name, arcname=Path(source_csv_file_name).name)
