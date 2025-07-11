@@ -1,28 +1,35 @@
-# Start from official SageMaker TensorFlow CPU base image (2.13, Python 3.9)
-FROM tensorflow/tensorflow:2.13.0-gpu
+# Base image: TensorFlow 2.19 with GPU
+FROM tensorflow/tensorflow:2.19.0-gpu
 
-# SageMaker expects this
-ENV PYTHONUNBUFFERED=TRUE
+# Disable bytecode and enable immediate logs
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
-# Create directories
+# Required SageMaker paths
 RUN mkdir -p /opt/ml/code
-
 WORKDIR /opt/ml/code
 
+# Install Linux build tools (optional)
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements and install dependencies
 COPY requirements.txt .
+RUN pip install --upgrade pip && \
+    pip install -r requirements.txt
 
-# Install dependencies
-RUN pip install --no-cache-dir --upgrade pip \
- && pip install --no-cache-dir -r requirements.txt
-
-# Copy source files
+# Copy all necessary code explicitly
 COPY app.py .
-COPY bsp_cloud_lib.py .
 COPY bsp_util.py .
+COPY bsp_cloud_lib.py .
+COPY config.py .
 COPY pyified_resources.py .
 COPY BSP_Extreme_Value_Evaluator_Models.csv .
 COPY BSP_Plateau_Evaluator_Models.csv .
 COPY BSP_General_Trend_Change_Evaluator_Models.csv .
+# for safety reasons, not applicable for now but maybe later you do not provide the env file
+#COPY .env .
 
-# Define the entrypoint for the container
+# Define training entry point (if used by SageMaker, or manually)
 ENTRYPOINT ["python", "app.py"]

@@ -9,7 +9,7 @@ from bsp_cloud_lib import Cloud_Storage
 import numpy as np
 from config import Config
 from pathlib import Path
-import tflite_runtime.interpreter as tflite
+import onnxruntime as ort
 
 # Initialize global state
 past = [0.0] * 7
@@ -64,10 +64,12 @@ def lambda_handler(event, context):
         prevs = np.array([
             [float(glucose_readings[i].value), 
             # Original: tod exemption try
-            #(glucose_readings[i].datetime.hour * 60 + glucose_readings[i].datetime.minute) / 1440
+            np.sin(2 * np.pi * (glucose_readings[i].datetime.hour * 60 + glucose_readings[i].datetime.minute) / 1440),
+            np.cos(2 * np.pi * (glucose_readings[i].datetime.hour * 60 + glucose_readings[i].datetime.minute) / 1440)
             ]
             for i in range(Standard_Vars.REG_SHAPE)
         ])[::-1] 
+        Standard_Vars.current_time = glucose_readings[0].datetime.hour * 60 + glucose_readings[0].datetime.minute
         print(prevs)
 
         # Step 3: Download and extract zip
@@ -87,21 +89,20 @@ def lambda_handler(event, context):
             metadata = list(json.load(file).values())
 
         # metadata[0] contains how many models there are
-        model_paths = [Config.TMP_DIR / f"{username}_{i}.tflite" for i in range(1, metadata[0]+1)]
+        model_paths = [Config.TMP_DIR / f"{username}_{i}.onnx" for i in range(1, metadata[0]+1)]
         # if not all the models exist in the desired path
         if not all(p.exists() for p in model_paths):
             with zipfile.ZipFile(zip_file, 'r') as zip_ref:
                 for i in range(1, metadata[0]+1):
-                    zip_ref.extract(f"{username}_{i}.tflite", path=str(Config.TMP_DIR))
+                    zip_ref.extract(f"{username}_{i}.onnx", path=str(Config.TMP_DIR))
                     zip_ref.extract(f"{username}_{i}_scores.json", path=str(Config.TMP_DIR))
 
         # Step 4: Load model and scores
         personal_model = []
         for i in range(1, metadata[0] + 1):
-            tflite_path = Config.TMP_DIR / f"{username}_{i}.tflite"
-            interpreter = tflite.Interpreter(model_path=str(tflite_path))
-            interpreter.allocate_tensors()
-            personal_model.append(interpreter)
+            onnx_path = Config.TMP_DIR / f"{username}_{i}.onnx"
+            sess = ort.InferenceSession(str(onnx_path))
+            personal_model.append(sess)
             
         #load the scores of the models into a model in order
         indic_score_list = []

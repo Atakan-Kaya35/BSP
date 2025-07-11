@@ -373,16 +373,6 @@ class Model_Creation():
                 regressor.fit(X_train, y_train, validation_data=(X_val, y_val),
                             epochs=EPOCHS, batch_size=BATCH_SIZE, callbacks=[early_stop])
 
-
-
-
-
-                regressor.save(Config.TMP_DIR / f"{username}_{num_models_accepted}.h5")
-
-
-
-
-
                 # check if the model is acceptable
                 curr_model_acc = Model_Assessment.model_accuracy_finder(regressor, X_test, y_test)
                 if curr_model_acc > acceptable_acc_score:
@@ -460,21 +450,22 @@ class Model_Creation():
                 with zipfile.ZipFile(output_zip_path, 'w', compression=zipfile.ZIP_DEFLATED) as zipf:
                     for i in range(1, num_models_accepted + 1):
                         # Paths
-                        model_dir = Config.TMP_DIR / f"{username}_{i}_model"
-                        model_zip_path = Config.TMP_DIR / f"{username}_{i}_model.zip"
+                        #model_dir = Config.TMP_DIR / f"{username}_{i}_model"
+                        #model_zip_path = Config.TMP_DIR / f"{username}_{i}_model.zip"
                         score_path = Config.TMP_DIR / f"{username}_{i}_scores.json"
                         onnx_path = Config.TMP_DIR / f"{username}_{i}.onnx"
 
                         # Zip SavedModel folder into .zip
-                        shutil.make_archive(str(model_zip_path).replace('.zip', ''), 'zip', model_dir)
+                        #shutil.make_archive(str(model_zip_path).replace('.zip', ''), 'zip', model_dir)
 
                         # Add zipped model + score file to output zip
-                        zipf.write(model_zip_path, arcname=model_zip_path.name)
+                        #zipf.write(model_zip_path, arcname=model_zip_path.name)
                         zipf.write(score_path, arcname=score_path.name)
                         zipf.write(onnx_path, arcname=onnx_path.name)
 
                     zipf.write(metadata_file_path, arcname=metadata_file_path.name)
-                    zipf.write(source_csv_file_name, arcname=Path(source_csv_file_name).name)
+                    source_csv_path = Path(Config.TMP_DIR) / source_csv_file_name
+                    zipf.write(source_csv_path, arcname=Path(source_csv_file_name).name)
                     
                 # Upload the zip file to the cloud
                 if not Config.IS_LOCAL:                
@@ -543,6 +534,7 @@ class Model_Creation():
             if Config.IS_LOCAL:
                 input_csv_path = f".\{username}.csv"
             else:
+                os.makedirs(Config.TMP_DIR, exist_ok=True)
                 input_csv_path = Config.TMP_DIR / f"{username}.csv"
                 Cloud_Storage.download_from_s3(f"{username}/{username}.csv", str(input_csv_path))
 

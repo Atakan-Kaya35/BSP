@@ -1,53 +1,43 @@
-import json
-import os
 import traceback
-import zipfile
-from pydexcom import Dexcom
-from keras.models import load_model
 import numpy as np
-import pandas as pd
 import logging
-from sklearn.preprocessing import MinMaxScaler
 #from pyified_resources import Models
 from pyified_resources import Standard_Vars
-from bsp_cloud_lib import Cloud_Storage
+import onnxruntime as ort
 
 class Pred_Tools():
 
     @staticmethod
-    def many_model_predict(values, models = None):
+    def many_model_predict(values, models=None):
         """
-        Predicts the values using a bag of models
+        Predicts the values using a bag of ONNX models
+        Appends the current time kept by the system
 
         Args:
-            values: set of values to make pred with
-            models: the set of models desired to be used
-        
+            values: numpy array of shape (1, seq_len, input_dim)
+            models: list of onnxruntime.InferenceSession instances
+
         Returns:
-            Single value of the prediction:
-            The individual predictions in a 2D array [[],[]]
+            mean_pred: list containing the mean predicted blood sugar value
+            preds: list of individual predictions from each model, 2D array ready for minmaxsc
         """
+        Standard_Vars.current_time = (Standard_Vars.current_time + 5) % 1440
+
         preds = []
         for model in models:
-            # due to the [blood sugar, TOD], TOD is set to the next 5 minutes
-            # TODO: Should it be 2 * values[0][1] - values[1][1] instead, is the time going from right to left or left to right/ TIME INCREASES AND THE PREDİCTİON IS MADE SO THE FİRST ELEMNT
-            # IN THE VALUES LİST IS THE FARTHEST FROM THE PRESENT
-            input_details = model.get_input_details()
-            output_details = model.get_output_details()
+            input_name = model.get_inputs()[0].name
+            output_name = model.get_outputs()[0].name
 
-            # Ensure float32 dtype for TFLite
-            model.set_tensor(input_details[0]['index'], values.astype(np.float32))
-            model.invoke()
-            output = model.get_tensor(output_details[0]['index'])
+            # ONNX requires float32
+            result = model.run([output_name], {input_name: values.astype(np.float32)})
+            
+            # Shape: result[0] should be (1, 1) or (1,) depending on model
+            preds.append([result[0][0][0]])  # Extract scalar from shape (1, 1)
 
-            # TODO: INPUT FORMAT SPECIFIC, make more flexible, preds.append([x for x in output[0]])
-            preds.append([output[0][0]])
-
-        predicted_blood_sugar = [np.mean(preds[:][0], axis=0)
-                                 # Original: tod exemption
-                                 #, preds[0][1]
-                                 ]
-        return predicted_blood_sugar, preds
+        individual_predictions = [p[0] for p in preds]
+        predicted_blood_sugar = [np.mean(individual_predictions), np.cos(2 * np.pi *Standard_Vars.current_time / 1440), np.sin(2 * np.pi *Standard_Vars.current_time / 1440)]
+        individual_predictions = [[i] for i in individual_predictions]
+        return predicted_blood_sugar, individual_predictions
 
 
     def pred_next_arbitrary(past_values, wanted_history = Standard_Vars.FIVE_MIN_INTERVAL, interval_num = 3, models = None):
@@ -69,9 +59,10 @@ class Pred_Tools():
 
         # modify the simple array into scaled pd dataframe
         past_values = np.array(past_values)  # Should already be 2D from app.py
-        past_values = Standard_Vars.sc.transform(past_values)  # scaler must handle 2 features
+        past_values = Standard_Vars.sc.transform(past_values)
 
         # get only what is required for the model
+        # TODO: shaoe has changed 
         X_test = past_values[len(past_values) - wanted_history :]
 
         # configure X_test to fit the model
@@ -84,12 +75,12 @@ class Pred_Tools():
         predictions.append(mean_pred)
         
         # prepare indicator values
-        indic_data = Standard_Vars.sc.inverse_transform(individual_preds)
+        indic_data = Standard_Vars.sc_sugar.inverse_transform(individual_preds)
 
         # append the list
         np_predictions = np.array([mean_pred])             # shape (2,)
         np_predictions = np_predictions.reshape(1, 1, -1)      # shape (1, 1, 2)
-        X_test = np.append(X_test, np_predictions, axis=1) # shape becomes (1, 13, 2)
+        X_test = np.append(X_test, np_predictions, axis=1) # shape becomes (1, 13, dim)
 
         # repeats desired interval number - 1 times from here
         # get list ready for fiting model
@@ -101,14 +92,14 @@ class Pred_Tools():
             predictions.append(mean_pred)
             
             # prepare indicator values
-            indic_data = Standard_Vars.sc.inverse_transform(individual_preds)
+            indic_data = Standard_Vars.sc_sugar.inverse_transform(individual_preds)
 
             # append the list
             np_predictions = np.array([mean_pred])             # shape (2,)
             np_predictions = np_predictions.reshape(1, 1, -1)      # shape (1, 1, 2)
             X_test = np.append(X_test, np_predictions, axis=1) # shape becomes (1, 13, 2)
 
-        predictions = Standard_Vars.sc.inverse_transform(predictions)
+        predictions = Standard_Vars.sc_sugar.inverse_transform(predictions)
 
         return predictions, indic_data
 
