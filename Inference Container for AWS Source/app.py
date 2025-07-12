@@ -1,5 +1,4 @@
 import json
-import os
 import traceback
 import zipfile
 import logging
@@ -8,38 +7,21 @@ from bsp_util import Pred_Tools, Model_Assessment, Communication, Standard_Vars
 from bsp_cloud_lib import Cloud_Storage
 import numpy as np
 from config import Config
-from pathlib import Path
 import onnxruntime as ort
 
 # Initialize global state
-past = [0.0] * 7
-was_predicted = [[] for _ in range(Standard_Vars.REG_SHAPE + 1)]
-follower = 0
 Standard_Vars.initialize()
 
 def lambda_handler(event, context):
     """
-    Lambda handler for running inference using Dexcom API and user-specific model.
+    Lambda handler for running inference using Dexcom API and user-specific model downloaded from S3.
 
     Expects:
-    - JSON body with 'username' and 'password'
+    - JSON body with 'username' and 'password' as strings
 
     Returns:
-    - JSON result with prediction and indicators
+    - JSON result with prediction and indicators, see Communications.jsonBuilder() for more info
     """
-    
-    # An options type http call in a rest api requires special treatment, 
-    # if the lambda function switches to a rest api from a https api recponsider code
-    """if event.get("httpMethod") == "OPTIONS":
-        return {
-            "statusCode": 200,
-            "headers": {
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods": "OPTIONS,POST,GET",
-                "Access-Control-Allow-Headers": "Content-Type"
-            },
-            "body": ""
-        }"""
     
     try:
         if Config.IS_LOCAL:
@@ -56,8 +38,6 @@ def lambda_handler(event, context):
                 "body": json.dumps({"error": "Missing 'username' or 'password'"})
             }
 
-        global past, was_predicted, follower
-
         # Step 1: Get Dexcom readings
         dexcom = Dexcom(username, password, ous=True)
         glucose_readings = dexcom.get_glucose_readings(max_count = 12)
@@ -70,6 +50,7 @@ def lambda_handler(event, context):
             for i in range(Standard_Vars.REG_SHAPE)
         ])[::-1] 
         Standard_Vars.current_time = glucose_readings[0].datetime.hour * 60 + glucose_readings[0].datetime.minute
+        
         print(prevs)
 
         # Step 3: Download and extract zip
@@ -117,16 +98,7 @@ def lambda_handler(event, context):
                                                            Standard_Vars.FIVE_MIN_INTERVAL, 
                                                            models = personal_model)
 
-        follower += 1
-        # shift previous predictions by one
-        for i in range(1, Standard_Vars.REG_SHAPE + 1):
-            was_predicted[i - 1] = was_predicted[i]
-
-        # TODO: for continuous inferences dexcom skipping BS values in sometimes sending them late was a problem
-        # this is one of the codes written to remedy that situation
         # append the new predictions
-        was_predicted[-1] = nexts
-        past = prevs.copy()
         # Convert prevs to a list so we can append
         prevs = np.concatenate([prevs, nexts], axis=0)
 
@@ -134,7 +106,7 @@ def lambda_handler(event, context):
         indicators = Model_Assessment.indicator_recognizer(indic_data, indic_score_list)
 
         # Step 7: Return result
-        response = Communication.jsonBuilder(prevs, glucose_readings[0], username, indicators)
+        response = Communication.jsonBuilder(prevs, glucose_readings[0], indicators)
         return {
             "statusCode": 200,
             "body": json.dumps(response)
@@ -148,10 +120,9 @@ def lambda_handler(event, context):
             "body": json.dumps({"error": str(e)})
         }
 
-    finally:
-        # CAUTION: the following commands are erased to save costs and since the training 
-        # container is very disposable, a good and long term arhitecture should leave no
-        # file behind and this is not a best practice, through it is for this use case 
+    #finally:
+        # CAUTION: commands can be added to erase the artifacts downloaded in oder to save costs
+        # this is not best practice right now due to the hot start nature of AWS optimization
         # Delete the local files
         """ 
         try:
@@ -160,24 +131,6 @@ def lambda_handler(event, context):
         except Exception:
             pass
         """
-""" if __name__ == "__main__":
-    # Simulated Lambda event payload (matches what API Gateway sends)
-    test_event = {
-        "body": json.dumps({
-            "username": "atakanka350@gmail.com",   # Replace with real credentials
-            "password": "***REDACTED-ROTATED-CREDENTIAL***"
-        })
-    }
-
-    # Dummy context (can be None unless you're using it)
-    test_context = None
-
-    # Call the Lambda handler
-    response = lambda_handler(test_event, test_context)
-
-    # Pretty-print the result
-    print("Lambda test output:")
-    print(json.dumps(response, indent=4)) """
 
 if Config.IS_LOCAL:
     lambda_handler(0,0)

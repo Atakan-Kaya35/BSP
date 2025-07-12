@@ -1,5 +1,4 @@
 import boto3
-import os
 from config import Config
 
 class Cloud_Storage:

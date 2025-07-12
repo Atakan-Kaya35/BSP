@@ -8,84 +8,12 @@ import pandas as pd
 import logging
 from pyified_resources import Standard_Vars
 from bsp_cloud_lib import Cloud_Storage
-from sklearn.model_selection import train_test_split
 from keras.callbacks import EarlyStopping
 from config import Config
 from pathlib import Path
 import tensorflow as tf
 import tf2onnx
 
-class Pred_Tools():
-    def pred_next_three(past_values, wanted_history=Standard_Vars.FIVE_MIN_INTERVAL, model=None):
-        """
-        Predicts the next three values at given context
-
-        Args: 
-            past_values: any length of bs values
-            wanted_history: the number of most recent values to be used for the prediction, 
-                           important for the input style of the pred model
-            model: the singular model to do the predicting
-        
-        Returns:
-            1D array of 3 predicted values
-        """
-        predictions = []
-
-        try:
-            # modify the simple array into scaled pd dataframe
-            past_values = pd.DataFrame(past_values, columns=["Blood_Sugars"])
-            past_values = past_values[:].values
-            past_values.reshape(-1, 1)
-            past_values = Standard_Vars.sc.transform(past_values)
-        
-            # get only what is required for the model
-            X_test = past_values[len(past_values) - wanted_history:]
-        
-            # configure X_test to fit the model
-            X_test = np.array(X_test)
-            X_test = np.reshape(X_test, (1, Standard_Vars.REG_SHAPE, 1))
-        
-            # make prediction
-            # TODO
-            predicted_blood_sugar = model.predict(X_test)
-            predictions.append(predicted_blood_sugar[0])
-
-            # append the list
-            X_test = np.append(X_test, [predictions[-1]])
-        
-            # repeats three times from here
-        
-            # get list ready for fiting model
-            X_test = X_test[-wanted_history:]
-            X_test = np.array(X_test)
-            X_test = np.reshape(X_test, (1, Standard_Vars.REG_SHAPE, 1))
-        
-            # predicted_blood_sugar = many_model_predict(X_test)
-            predicted_blood_sugar = model.predict(X_test)
-            predictions.append(predicted_blood_sugar[0])
-        
-            X_test = np.append(X_test, [predictions[-1]])
-        
-            X_test = X_test[-wanted_history:]
-            X_test = np.array(X_test)
-            X_test = np.reshape(X_test, (1, Standard_Vars.REG_SHAPE, 1))
-            
-            # predicted_blood_sugar = many_model_predict(X_test)
-            predicted_blood_sugar = model.predict(X_test)
-            predictions.append(predicted_blood_sugar[0])
-        
-            X_test = np.append([predictions[-1]], X_test)
-            X_test = X_test[-wanted_history:]
-        
-            predictions = Standard_Vars.sc.inverse_transform(predictions)
-        
-            return predictions
-        
-        except Exception as e:
-            logging.error(f"Error in pred_next_three: {e}")
-            return []
-
-    
 class Model_Assessment():
     @staticmethod
     def accuracy_finder(predicted, real, percentage_error_threshold=0.03, big_error_treshold=5):
@@ -93,7 +21,7 @@ class Model_Assessment():
         Calculates accuracy between two sets
 
         Args:
-            prediction: the predicted values
+            prediction: the predicted values, as a list of dimension Standard_Vars.DIM
             real: the actual values in the same time interval
             percentage_error_threshold: percentage deviation for a pred to be considered true
 
@@ -102,10 +30,6 @@ class Model_Assessment():
         """
         # Calculate the absolute percentage error for each prediction
         # absolute_error = np.abs((predicted - real))
-        zero_indices = np.where(real == 0)[0]
-        if len(zero_indices) > 0:
-            print(f"Warning: {len(zero_indices)} division by zero attempts detected (real values contain zeros)")
-        
         absolute_percentage_error = np.abs((predicted - real) / real)
 
         # Count the number of accurate predictions based on the threshold
@@ -320,7 +244,7 @@ class Model_Creation():
             y_val = y_train_val[-val_size:]
 
             # Importing the Keras libraries and packages
-            from tensorflow.keras import Input, Model
+            #from tensorflow.keras import Input, Model
             from keras.layers import Dense
             from keras.layers import GRU
             from keras.layers import Dropout
@@ -398,8 +322,8 @@ class Model_Creation():
                     with open(score_path, 'w') as f:
                         json.dump(scores, f)  
                         
-                    input_shape = (1, Standard_Vars.FIVE_MIN_INTERVAL, Standard_Vars.INPUT_DIM)  # Adjust the last number based on your actual input features
-                    input_signature = [tf.TensorSpec(shape=input_shape, dtype=tf.float32, name='input')]
+                    #input_shape = (1, Standard_Vars.FIVE_MIN_INTERVAL, Standard_Vars.INPUT_DIM)  # Adjust the last number based on your actual input features
+                    #input_signature = [tf.TensorSpec(shape=input_shape, dtype=tf.float32, name='input')]
 
                     onnx_model_path = Config.TMP_DIR / f"{username}_{num_models_accepted}.onnx"
                     # 🔒 Freeze all layers to inference mode
@@ -471,20 +395,8 @@ class Model_Creation():
                 if not Config.IS_LOCAL:                
                     Cloud_Storage.upload_to_s3(f"{username}/{zip_filename}", str(output_zip_path))
 
-                # CAUTION: the following commands are erased to save costs and since the training 
-                # container is very disposable, a good and long term arhitecture should leave no
-                # file behind and this is not a best practice, through it is for this use case 
-                # Delete the local files
-                """for i in range(1,num_models_accepted + 1):
-                #legacy now
-                    os.remove(f"{username}_{i}.h5")
-                    os.remove(f"{username}_{i}_scores.json")
-                os.remove(metadata_file)
-                os.remove(source_csv_file_name)
-                os.remove(source_csv_file_name)
-                os.remove(regressor_file)
-                os.remove(scores_file)
-                os.remove(output_zip_path)"""
+                # Delete the local files, but not needed as the instance, for the most recent single person 
+                # synchronus implementation, will shut the insnace down anyway
 
                 return {"Success": "File created and uploaded successfully!"}, 200
 

@@ -3,7 +3,6 @@ import numpy as np
 import logging
 #from pyified_resources import Models
 from pyified_resources import Standard_Vars
-import onnxruntime as ort
 
 class Pred_Tools():
 
@@ -14,13 +13,14 @@ class Pred_Tools():
         Appends the current time kept by the system
 
         Args:
-            values: numpy array of shape (1, seq_len, input_dim)
+            values: numpy array of shape (1, seq_len, input_dim) as a py list
             models: list of onnxruntime.InferenceSession instances
 
         Returns:
-            mean_pred: list containing the mean predicted blood sugar value
+            mean_pred: list containing the mean predicted blood sugar value, shape (input_dim)
             preds: list of individual predictions from each model, 2D array ready for minmaxsc
         """
+        print(Standard_Vars.current_time)
         Standard_Vars.current_time = (Standard_Vars.current_time + 5) % 1440
 
         preds = []
@@ -35,7 +35,8 @@ class Pred_Tools():
             preds.append([result[0][0][0]])  # Extract scalar from shape (1, 1)
 
         individual_predictions = [p[0] for p in preds]
-        predicted_blood_sugar = [np.mean(individual_predictions), np.cos(2 * np.pi *Standard_Vars.current_time / 1440), np.sin(2 * np.pi *Standard_Vars.current_time / 1440)]
+        only_blood_sugar = Standard_Vars.sc_sugar.inverse_transform([[np.mean(individual_predictions)]])
+        predicted_blood_sugar = Standard_Vars.sc.transform([[only_blood_sugar[0][0], np.sin(2 * np.pi * Standard_Vars.current_time / 1440), np.cos(2 * np.pi * Standard_Vars.current_time / 1440)]])[0]
         individual_predictions = [[i] for i in individual_predictions]
         return predicted_blood_sugar, individual_predictions
 
@@ -45,13 +46,13 @@ class Pred_Tools():
         Predicts the next arbitrary number of bs values at given context
 
         Args: 
-            past_values: any length of bs values in 2D float [blood sugar, TOD]
+            past_values: any length of bs values in 2D float [blood sugar, TOD], py list
             wanted_history: the number of most recent values to be used for the prediction, important for the input style of the pred model
-            interval_num: the number of bs values to be predicted
-            models: the bag of model to do the predicting
+            interval_num: the number of bs values to be predicted, int
+            models: the bag of model to do the predicting, read .onnx files turned into class objects
         
         Returns:
-            Predictions: 1D array of interval_num many predicted values
+            Predictions: 2D array of interval_num many predicted values, shape: (1, seq_len, input_dim)
             indic_data: the individual predictions of the models to be further used in indication analysis
         """
         predictions = []
@@ -62,11 +63,9 @@ class Pred_Tools():
         past_values = Standard_Vars.sc.transform(past_values)
 
         # get only what is required for the model
-        # TODO: shaoe has changed 
         X_test = past_values[len(past_values) - wanted_history :]
 
         # configure X_test to fit the model
-        # TODO: what does this do and is it necessary
         X_test = np.array(X_test)
         X_test = np.reshape(X_test, (1, Standard_Vars.REG_SHAPE, Standard_Vars.INPUT_DIM))
 
@@ -79,7 +78,7 @@ class Pred_Tools():
 
         # append the list
         np_predictions = np.array([mean_pred])             # shape (2,)
-        np_predictions = np_predictions.reshape(1, 1, -1)      # shape (1, 1, 2)
+        np_predictions = np_predictions.reshape(1, 1, -1)      # shape (1, 1, dim)
         X_test = np.append(X_test, np_predictions, axis=1) # shape becomes (1, 13, dim)
 
         # repeats desired interval number - 1 times from here
@@ -114,7 +113,8 @@ class Model_Assessment():
             score_list: a 2D list [[a,b,c], ...] with scores of the models the predicted value belongs to
         
         Returns:
-            Three digit indicator value with (extreme value indic, plateau indic, trend change indic) abc based on the scores of models good in that field
+            Three digit indicator value with (extreme value indic, plateau indic, trend change indic) abc based on the scores of models good in that field.
+                an int vale between low 200 to 0 with meaning to each decimal step
         """
         try:
             global scores
@@ -169,16 +169,15 @@ class Model_Assessment():
 
 
 class Communication():
-    def jsonBuilder(values, last_dexcom_instance, username, indicators):
+    def jsonBuilder(values, last_dexcom_instance, indicators):
         """
         Creates the json dictionary format
         Also updates the SQL database as it is the best time to do so
 
         Args: 
-            values: actual bs values with the mean bs values at the end
-            last_dexcom_instance: the last Dexcom value with dexcom trend info
-            username: username to be able to update SQL
-            indicators: the indicator values to be sent
+            values: actual bs values with the mean bs values at the end, 2D list [[dim], [dim], ...] 
+            last_dexcom_instance: the last Dexcom value with dexcom trend info, Dexcom class object
+            indicators: the indicator values to be sent , low 200s to 0 int value
         
         Returns:
             .json Format: [safeness (bool), trend (in 2 digits), befores(in 9 digits), afters (in 9 digits), befores1(in 9 digits), afters (in 9 digits), befores2(in 9 digits), afters (in 9 digits), indicators (in 3 digits / trend change, stable, plateau)]
