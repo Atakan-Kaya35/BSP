@@ -28,6 +28,7 @@ COPY pyified_resources.py .
 COPY BSP_Extreme_Value_Evaluator_Models.csv .
 COPY BSP_Plateau_Evaluator_Models.csv .
 COPY BSP_General_Trend_Change_Evaluator_Models.csv .
+COPY health_check.py .
 # for safety reasons, not applicable for now but maybe later you do not provide the env file
 #COPY .env .
 

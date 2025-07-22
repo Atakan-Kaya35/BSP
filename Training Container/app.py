@@ -27,6 +27,7 @@ def main():
     parser.add_argument('--num_of_layers', type=int, default=5, help='Maximum training attempts.')
     parser.add_argument('--acceptable_acc_score', type=float, default=0.1, help='Minimum required accuracy.')
     parser.add_argument('--seq_len', type=int, default=12, help='Number of input timesteps')
+    parser.add_argument('--early_stop_patience', type=int, default=8, help='Patience value for early stop in RNN training.')
 
 
     args = parser.parse_args()
@@ -41,14 +42,14 @@ def main():
     try:
         logger.info(f"Starting training for user: {args.username}")
         message, status_code = Model_Creation.full_model_creation(
-            # LOCAL: username is mandetory so must be entered manually if need debugging
             username=args.username,
             num_of_models=args.num_of_models,
             epochs=args.epochs,
             batch_size=args.batch_size,
             remaining_tries=args.remaining_tries,
             acceptable_acc_score=args.acceptable_acc_score,
-            num_of_layers=args.num_of_layers
+            num_of_layers=args.num_of_layers,
+            early_stop_patience=args.early_stop_patience
         )
         logger.info(f"Training completed with status {status_code}: {message}")
     except Exception as e:

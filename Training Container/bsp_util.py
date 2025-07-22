@@ -2,10 +2,8 @@ import json
 import os
 import traceback
 import zipfile
-import shutil
 import numpy as np
 import pandas as pd
-import logging
 from pyified_resources import Standard_Vars
 from bsp_cloud_lib import Cloud_Storage
 from keras.callbacks import EarlyStopping
@@ -139,7 +137,8 @@ class Model_Creation():
         batch_size=24,
         remaining_tries=7,
         acceptable_acc_score=0.10,
-        num_of_layers=3
+        num_of_layers=3,
+        early_stop_patience=8
         ):
         """
         Creates and ships a zip file to the cloud with
@@ -172,7 +171,7 @@ class Model_Creation():
             GLUCOSE_COL = "Glikoz Değeri (mg/dL)"
             TEST_SPLIT_RATIO = 0.1  # e.g., 15% of data for final testing
             VAL_SPLIT_RATIO = 0.1            
-            EARLY_STOP_PATIENCE = 3
+            EARLY_STOP_PATIENCE = early_stop_patience
             
             # default file name is the username of user
             if source_csv_file_name is None:
@@ -414,7 +413,8 @@ class Model_Creation():
         batch_size=24, 
         remaining_tries=7, 
         acceptable_acc_score=0.10, 
-        num_of_layers=3
+        num_of_layers=3,
+        early_stop_patience=8
     ):
         """
         Parameters
@@ -443,6 +443,8 @@ class Model_Creation():
 
         """
         try:
+            print("Visible GPUs:", tf.config.list_physical_devices('GPU'))
+
             if Config.IS_LOCAL:
                 input_csv_path = f".\{username}.csv"
             else:
@@ -459,7 +461,8 @@ class Model_Creation():
                 batch_size=batch_size,
                 remaining_tries=remaining_tries,
                 acceptable_acc_score=acceptable_acc_score,
-                num_of_layers=num_of_layers
+                num_of_layers=num_of_layers,
+                early_stop_patience=early_stop_patience
             )
 
             return {"Hurray!": "All seems fine"}, 200

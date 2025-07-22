@@ -18,7 +18,6 @@ humanfriendly==10.0
 idna==3.10
 jmespath==1.0.1
 joblib==1.5.1
-keras==3.10.0
 kiwisolver==1.4.8
 libclang==18.1.1
 Markdown==3.8.2
@@ -51,10 +50,6 @@ scikit-learn==1.7.0
 scipy==1.15.3
 six==1.17.0
 sympy==1.14.0
-tensorboard==2.19.0
-tensorboard-data-server==0.7.2
-tensorflow==2.19.0
-tensorflow-io-gcs-filesystem==0.31.0
 termcolor==3.1.0
 tf2onnx==1.16.1
 threadpoolctl==3.6.0
