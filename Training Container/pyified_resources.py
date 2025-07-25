@@ -47,7 +47,7 @@ class Standard_Vars:
             data = pd.read_csv(file).values  # shape: (n_samples, 1) or (n_samples,)
 
             # Original: the median point
-            transformed = [[cls.transformed_point(cls, cls.medianalyze_point(value)) for value in row] for row in data]
+            transformed = [[cls.transformed_point(cls.medianalyze_point(value)) for value in row] for row in data]
             
             evaluation_datasets.append(transformed)
 
@@ -62,7 +62,16 @@ class Standard_Vars:
         """
         return [bsv, 0, 0]
     
+    @classmethod
     def transformed_point(cls, point):
         return [cls.sc.transform([[point[0]]]), cls.sc_time.transform([[point[1]]]), cls.sc_time.transform([[point[2]]])]
+    
+    @classmethod
+    def transformed_point_scaled(cls, point):
+        return [[[point[0]]], cls.sc_time.transform([[point[1]]]), cls.sc_time.transform([[point[2]]])]
+    
+    @classmethod
+    def medianalyze_transform_scaled(cls, bsv):
+        return cls.transformed_point_scaled(cls.medianalyze_point(bsv))
 
 

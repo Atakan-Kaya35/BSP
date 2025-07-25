@@ -97,33 +97,26 @@ class Model_Assessment():
                         predictions.append(pred)
                         
                         # Create new input for next prediction
-                        # Original: for no tod testing
-                        #new_point = np.array([[pred, 0.5]])  # Using time=0 for future points
-                        new_point = np.array([Standard_Vars.medianalyze_point(pred)])
+                        new_point = np.array([[pred, 0.5, 0.5]])
                         current_input = np.append(
-                            current_input[:, :-1, :],
+                            current_input[:, 1:, :],
                             [new_point],
                             axis=1
                         )
                     
                     # Get the actual third value from the dataset
                     actual_third_value = full_sequence[Standard_Vars.FIVE_MIN_INTERVAL + 2]
-                    
-                    # Create dummy array for inverse transform of prediction
-                    # Original: for no tod testing
-                    #dummy_pred = np.array([[predictions[2], 0.5]])
-                    dummy_pred = np.array([Standard_Vars.medianalyze_point(predictions[2])])
-                    pred_glucose = Standard_Vars.sc.inverse_transform(dummy_pred)[0][0]
-                    
+                                        
                     # Calculate accuracy for the third prediction only
                     accuracy_score = Model_Assessment.accuracy_finder(
-                        np.array([pred_glucose]), 
+                        np.array([predictions[-1]]), 
                         np.array([actual_third_value[0]])
                     )
                     indication_rating += accuracy_score
                     
                 score.append(indication_rating / len(evaluation_dataset))
             scores.append(score)
+        print("Scores for current model is:", scores)
         return scores
 
 
@@ -245,7 +238,7 @@ class Model_Creation():
             # Importing the Keras libraries and packages
             #from tensorflow.keras import Input, Model
             from keras.layers import Dense
-            from keras.layers import GRU
+            from keras.layers import LSTM
             from keras.layers import Dropout
             from keras.models import Sequential
             from keras.losses import MeanSquaredError
@@ -261,29 +254,29 @@ class Model_Creation():
                     name="input_layer"
                 ))
 
-                # GRU Layers (EXACTLY AS IN YOUR ORIGINAL CODE)
-                # First GRU
-                regressor.add(GRU(
+                # LSTM Layers (EXACTLY AS IN YOUR ORIGINAL CODE)
+                # First LSTM
+                regressor.add(LSTM(
                     units=50,
                     return_sequences=True,
-                    name="GRU_1"
+                    name="LSTM_1"
                 ))
                 regressor.add(Dropout(0.2, name="dropout_1"))
 
-                # Additional GRUs
+                # Additional LSTMs
                 for i in range(max(0, num_of_layers - 2)):
-                    regressor.add(GRU(
+                    regressor.add(LSTM(
                         units=50,
                         return_sequences=True,
-                        name=f"GRU_{i+2}"
+                        name=f"LSTM_{i+2}"
                     ))
                     regressor.add(Dropout(0.2, name=f"dropout_{i+2}"))
 
-                # Final GRU (no return_sequences)
-                regressor.add(GRU(
+                # Final LSTM (no return_sequences)
+                regressor.add(LSTM(
                     units=50,
                     return_sequences=False,  # VITAL/Critical for single-step prediction
-                    name="GRU_final"
+                    name="LSTM_final"
                 ))
                 regressor.add(Dropout(0.2, name="dropout_final"))
 
@@ -350,7 +343,7 @@ class Model_Creation():
                         output_path=str(onnx_model_path)
                     )
                     
-                    print(regressor.summary())  # Should show all GRU layers
+                    print(regressor.summary())  # Should show all LSTM layers
 
                 else:
                     print("Model REJECTED with accuracy:", curr_model_acc)
