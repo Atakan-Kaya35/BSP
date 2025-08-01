@@ -27,10 +27,12 @@ def lambda_handler(event, context):
         if Config.IS_LOCAL:
             username = "atakanka350@gmail.com"
             password = "***REDACTED-ROTATED-CREDENTIAL***"
+            is_first_call = True
         else:
             body = json.loads(event['body'])
             username = body.get('username')
             password = body.get('password')
+            is_first_call = body.get('is_first_call', False)
                 
         if not username or not password:
             return {
@@ -40,7 +42,7 @@ def lambda_handler(event, context):
 
         # Step 1: Get Dexcom readings
         dexcom = Dexcom(username, password, ous=True)
-        glucose_readings = dexcom.get_glucose_readings(max_count = 12)
+        glucose_readings = dexcom.get_glucose_readings(max_count = Standard_Vars.FIVE_MIN_INTERVAL)
         prevs = np.array([
             [float(glucose_readings[i].value), 
             # Original: tod exemption try
@@ -94,7 +96,7 @@ def lambda_handler(event, context):
 
 
         # Step 5: Run prediction
-        nexts, indic_data = Pred_Tools.pred_next_arbitrary(prevs.copy(), 
+        nexts, individual_preds = Pred_Tools.pred_next_arbitrary(prevs.copy(), 
                                                            Standard_Vars.FIVE_MIN_INTERVAL, 
                                                            models = personal_model)
 
@@ -103,10 +105,10 @@ def lambda_handler(event, context):
         prevs = np.concatenate([prevs, nexts], axis=0)
 
         # Step 6: Generate indicators
-        indicators = Model_Assessment.indicator_recognizer(indic_data, indic_score_list)
+        indicators, confidence, anomalies = Model_Assessment.output_evaluator(glucose_readings, individual_preds, indic_score_list)
 
         # Step 7: Return result
-        response = Communication.jsonBuilder(prevs, glucose_readings[0], indicators)
+        response = Communication.jsonBuilder(prevs, glucose_readings[0], indicators, confidence, anomalies, is_first_call, indic_score_list)
         return {
             "statusCode": 200,
             "body": json.dumps(response)
@@ -133,4 +135,4 @@ def lambda_handler(event, context):
         """
 
 if Config.IS_LOCAL:
-    lambda_handler(0,0)
+    print(lambda_handler(0,0))

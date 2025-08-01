@@ -308,7 +308,8 @@ class Model_Creation():
                     scores = {
                         "extreme values": scores[0], 
                         "plateau": scores[1], 
-                        "trend change": scores[2]
+                        "trend change": scores[2],
+                        "model_acc" : curr_model_acc
                     }
                     score_path = Config.TMP_DIR / f"{username}_{num_models_accepted}_scores.json"
                     with open(score_path, 'w') as f:

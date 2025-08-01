@@ -3,6 +3,7 @@ import numpy as np
 import logging
 #from pyified_resources import Models
 from pyified_resources import Standard_Vars
+from datetime import datetime
 
 class Pred_Tools():
 
@@ -104,19 +105,71 @@ class Pred_Tools():
 
 class Model_Assessment():
 
-    def indicator_recognizer(values, score_list = None):
+    def output_evaluator(prev_vals, values, score_list = None):
         """
         Assesses the indicator values, ready to be sent
 
         Args: 
-            values: the set of all prediction values from all models in order in 4D array form [[[[]],[[]]],[[[]]...]]
+            prev_vals: Dexcom Library CGM Value array for deep analysis
+            values: the set of all third prediction values from all models in order in 2D array form [[],[],[]...]]
             score_list: a 2D list [[a,b,c], ...] with scores of the models the predicted value belongs to
         
         Returns:
             Three digit indicator value with (extreme value indic, plateau indic, trend change indic) abc based on the scores of models good in that field.
                 an int vale between low 200 to 0 with meaning to each decimal step
+            confidence score = 100 - scalted_rms
+            anomaly detection: 1 = staleness/ CGM use, 10 = patchwork readings, 100 = spike/ freefall, 1000 = noise
         """
+        anomalies = 0
+        confidence_hit = 0
+        prev_sugar_vals = []
         try:
+            # staleness check for the last update, maybe user not using GCM for a while
+            if (datetime.now() - prev_vals[0].datetime).total_seconds() > 700:
+                anomalies += 8
+                confidence_hit += 80
+                
+            prev_time = prev_vals[0].datetime.hour * 60 + prev_vals[0].datetime.minute
+            prev_sugar_vals.append(prev_vals[0].value)
+            
+            # maybe user's sensor is giving errors and making patch work readings
+            for i in range(1, len(prev_vals)):
+                current_time = prev_vals[i].datetime.hour * 60 + prev_vals[i].datetime.minute
+                if (current_time - prev_time) >= 12 and anomalies < 2:
+                    anomalies += 4
+                    confidence_hit += 60
+                
+                prev_sugar_vals.append(prev_vals[i].value)
+            
+            cgm_values = np.array(prev_sugar_vals)
+            
+            # Spike Detection
+            diffs = np.abs(np.diff(cgm_values))
+            if np.any(diffs > 40):  # >40 mg/dL jump in 5 mins is suspicious
+                anomalies += 2
+                confidence_hit += 15
+            
+            # Noise/Instability Detection
+            directions = []
+            for i in range(1, len(cgm_values)):
+                delta = cgm_values[i] - cgm_values[i-1]
+                if abs(delta) < 7:
+                    directions.append(0)  # Ignore micro-changes
+                elif delta > 0:
+                    directions.append(1)
+                else:
+                    directions.append(-1)
+
+            flips = 0
+            for i in range(1, len(directions)):
+                if directions[i] != 0 and directions[i] != directions[i-1]:
+                    flips += 1
+                    
+            if flips > 1:
+                anomalies += 1
+                confidence_hit += 30      
+                
+            print(values, "valsss")
             global scores
 
             if score_list == None:
@@ -131,8 +184,9 @@ class Model_Assessment():
             # Set thresholds and bounds
             lower_bound = 80
             upper_bound = 200
-            proficient_model_score_threshold = 0.59
+            proficient_model_score_threshold = 0.3
             indicative_value_threshold = 13
+            rms_val = 0
 
             # Iterate through the scores and values
             for i, score in enumerate(score_list):
@@ -140,36 +194,44 @@ class Model_Assessment():
                 # Then checks if the proficient model made an expert extreme value pred
                 # Adds 100 if low expected, 200 if high expected
                 if score[0] > proficient_model_score_threshold:
-                    if values[i][-1][0][0][0] < lower_bound:
+                    if values[i][-1] < lower_bound:
                         indicator_list += 100
-                    elif values[i][-1][0][0][0] > upper_bound:
+                    elif values[i][-1] > upper_bound:
                         indicator_list += 200
 
                 # Check plateau indicator: model proficiency -> checks if the pred is stable
                 # adds 10 if it is
                 if score[1] > proficient_model_score_threshold:
-                    if abs(mean - values[i][-1][0][0]) <= indicative_value_threshold:
+                    if abs(mean - values[i][-1]) <= indicative_value_threshold:
                         indicator_list += 10
 
                 # Check trend change indicator:  model proficiency -> checks if the pred is deviating from trend
                 # If there is a possible trend downward adds 1, if upward adds 2
                 if score[2] > proficient_model_score_threshold:
-                    if abs(mean - values[i][-1][0][0]) >= indicative_value_threshold:
-                        if (mean - values[i][-1][0][0]) > 0:
+                    if abs(mean - values[i][-1]) >= indicative_value_threshold:
+                        if (mean - values[i][-1]) > 0:
                             indicator_list += 1
-                        elif (mean - values[i][-1][0][0]) < 0:
+                        elif (mean - values[i][-1]) < 0:
                             indicator_list += 2
 
-            return indicator_list
+                #root mean squared addition for confidence
+                rms_val += (mean - values[i][-1]) ** 2
+            
+            # the *10 at the end is total arbitrary, the confidence values were in the 98-100 % range which is just not true
+            # also the anomalies means the prediction is just not as it is supposed to so it creates great dip with confidence_hit
+            confidence_hit = confidence_hit if confidence_hit < 100 else 100
+            rms_val = ((rms_val / len(score_list)) ** .5) * 10
+
+            return indicator_list, (100 - confidence_hit - (rms_val / mean * 100)), anomalies
         except Exception as e:
             error_trace = traceback.format_exc()
             logging.error(error_trace)
-            return 0
+            return 0, 0, 0
 
 
 
 class Communication():
-    def jsonBuilder(values, last_dexcom_instance, indicators):
+    def jsonBuilder(values, last_dexcom_instance, indicators, confidence, anomalies, is_first_call, score_list):
         """
         Creates the json dictionary format
         Also updates the SQL database as it is the best time to do so
@@ -229,8 +291,25 @@ class Communication():
                 answer[1] += 0
             else:
                 answer[1] += 7
-            
-            return {"safeness" : answer[0], "trend" : answer[1], "befores" : (int)(values[-6][0] * 10**6 + values[-5][0] * 10**3 + values[-4][0]), "befores1" : (int)(values[-9][0] * 10**6 + values[-8][0] * 10**3 + values[-7][0]), "befores2" : (int)(values[-12][0] * 10**6 + values[-11][0] * 10**3 + values[-10][0]), "afters" : int(values[-3][0]) * 10**6 + int(values[-2][0]) * 10**3 + int(values[-1][0]), "indicators" : indicators}
+                
+             # Base response
+            base_response = {
+                "safeness": answer[0],
+                "trend": answer[1],
+                "befores": int(values[-6][0] * 10**6 + values[-5][0] * 10**3 + values[-4][0]),
+                "befores1": int(values[-9][0] * 10**6 + values[-8][0] * 10**3 + values[-7][0]),
+                "befores2": int(values[-12][0] * 10**6 + values[-11][0] * 10**3 + values[-10][0]),
+                "afters": int(values[-3][0]) * 10**6 + int(values[-2][0]) * 10**3 + int(values[-1][0]),
+                "indicators": indicators,
+                "confidence": confidence,
+                "anomalies": anomalies
+            }
+    
+            # Add model info only on first call
+            if is_first_call and score_list:
+                base_response["models_info"] = score_list
+    
+            return base_response
         
         except Exception as e: 
             logging.exception(f"Error in jsonDictBuilder: {e}")

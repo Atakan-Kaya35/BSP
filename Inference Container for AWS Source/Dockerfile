@@ -14,7 +14,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy source files
 COPY app.py bsp_cloud_lib.py bsp_util.py pyified_resources.py config.py ./
-COPY .env .
+#COPY .env .
 
 # Define Lambda handler entry point
 CMD ["app.lambda_handler"]
