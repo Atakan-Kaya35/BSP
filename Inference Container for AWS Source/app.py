@@ -45,20 +45,21 @@ def lambda_handler(event, context):
         glucose_readings = dexcom.get_glucose_readings(max_count = Standard_Vars.FIVE_MIN_INTERVAL)
         prevs = np.array([
             [float(glucose_readings[i].value), 
-            # Original: tod exemption try
             np.sin(2 * np.pi * (glucose_readings[i].datetime.hour * 60 + glucose_readings[i].datetime.minute) / 1440),
             np.cos(2 * np.pi * (glucose_readings[i].datetime.hour * 60 + glucose_readings[i].datetime.minute) / 1440)
             ]
             for i in range(Standard_Vars.REG_SHAPE)
         ])[::-1] 
+        # initialize the current time for use in inference step
         Standard_Vars.current_time = glucose_readings[0].datetime.hour * 60 + glucose_readings[0].datetime.minute
         
         print(prevs)
 
         # Step 3: Download and extract zip
-        #whether local or in production, there must be a tmp folder in the same directory as the scrpit that contains the 
-        #artifacts needed, in this case the zip file
+        # whether local or in production, there must be a tmp folder in the same directory as the scrpit that contains the 
+        # artifacts needed, in this case the zip file
         zip_file = Config.TMP_DIR / f"{username}_data.zip"
+        # check to see if the zip file is already in the contanier as there is a chance that the contanier is hot
         if not zip_file.exists() and not Config.IS_LOCAL:
             Cloud_Storage.download_from_s3(f"{username}/{username}_data.zip", str(zip_file))
 
@@ -73,7 +74,7 @@ def lambda_handler(event, context):
 
         # metadata[0] contains how many models there are
         model_paths = [Config.TMP_DIR / f"{username}_{i}.onnx" for i in range(1, metadata[0]+1)]
-        # if not all the models exist in the desired path
+        # if not all the models exist in the desired path, container might be cold
         if not all(p.exists() for p in model_paths):
             with zipfile.ZipFile(zip_file, 'r') as zip_ref:
                 for i in range(1, metadata[0]+1):
@@ -100,7 +101,6 @@ def lambda_handler(event, context):
                                                            Standard_Vars.FIVE_MIN_INTERVAL, 
                                                            models = personal_model)
 
-        # append the new predictions
         # Convert prevs to a list so we can append
         prevs = np.concatenate([prevs, nexts], axis=0)
 

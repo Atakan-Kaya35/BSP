@@ -59,7 +59,6 @@ class Pred_Tools():
         predictions = []
         indic_data = [[]] * len(models)
 
-        # modify the simple array into scaled pd dataframe
         past_values = np.array(past_values)  # Should already be 2D from app.py
         past_values = Standard_Vars.sc.transform(past_values)
 
@@ -165,7 +164,7 @@ class Model_Assessment():
                 if directions[i] != 0 and directions[i] != directions[i-1]:
                     flips += 1
                     
-            if flips > 1:
+            if flips > 3:
                 anomalies += 1
                 confidence_hit += 30      
                 

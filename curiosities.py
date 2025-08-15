@@ -1,21 +1,22 @@
-from sklearn.preprocessing import MinMaxScaler
-import numpy as np
+import requests
 
-sc = MinMaxScaler()
-sc_vals = [[-1], [1]]
-sc.fit(sc_vals)
-""" 
-try_list = [[1,2], [0,3], [-1, 4]]
-try_list = np.array(try_list)
- """
-b = sc.transform([[0]])
-print(b)
+url = "https://***REDACTED***.execute-api.eu-central-1.amazonaws.com/dev/new-entry"
+data = {
+    "UserID": "abc123",
+    "Timestamp": 4,
+    "tags": ["test3", "entry"],
+    "text": "Hello world"
+}
 
-a = [1,2]
-a.extend([3,4])
+response = requests.post(url, json=data)  # Make sure it's POST
+print(response.status_code)
+print(response.text)
 
-print(a)
+url = "https://***REDACTED***.execute-api.eu-central-1.amazonaws.com/dev/get-entry"
+params = {
+    "UserID": "abc123",
+    "Timestamp": 4}
 
-#a = sc.transform(b)
-
-#print(a)
+response = requests.get(url, params=params)  # <- GET with params in URL
+print(response.status_code)
+print(response.text)

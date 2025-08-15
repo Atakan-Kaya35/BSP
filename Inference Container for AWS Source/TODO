@@ -1,0 +1,7 @@
+# RISK: There is a risk that in the future when there will be very frequent requests
+# when a request is made after a new model has been uploaded to s3, since the names
+# of the models are same the new ones will just never be extracted from the zip file
+# solution is to add timestamp to metadata
+if not all(p.exists() for p in model_paths):
+
+
