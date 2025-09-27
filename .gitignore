@@ -1,7 +1,7 @@
 __pycache__/
 *.h5
 *.zip
-*.csv
+#*.csv
 *.log
 /tmp/
 *.json
