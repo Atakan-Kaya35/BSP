@@ -27,6 +27,8 @@
 * [Quickstart (Local Demo)](#-quickstart-local-demo)
 * [Deploying to AWS](#-deploying-to-aws)
 * [Data & Models](#-data--models)
+* [Does It Actually Work?](#-does-it-actually-work)
+* [Evidence](#%EF%B8%8F-evidence)
 * [API Shape](#-api-shape)
 * [Observability](#-observability)
 * [Security & Privacy](#-security--privacy)
@@ -84,6 +86,12 @@ This repository open-sources the **system engineering** behind a complete blood 
 - **blood-sugar-predictor-web** — React web frontend (Plotly visualization)  
   https://github.com/Atakan-Kaya35/blood-sugar-predictor-web
 
+- **bsp-privacy-policy** — privacy policy published for the Google Play submission  
+  https://github.com/Atakan-Kaya35/bsp-privacy-policy
+
+- **BSP-app-process** — the earlier Flutter/Dart app attempt, April 2024  
+  https://github.com/Atakan-Kaya35/BSP-app-process
+
 ---
 
 ## 🗺️ Repository Map
@@ -96,8 +104,8 @@ This repository open-sources the **system engineering** behind a complete blood 
 | `Training Container/`                            | Batch training & evaluation       | **SageMaker Processing** |
 | `Histgetter Container for App Runner Sources/`   | Optional ingestion/API            | **AWS App Runner**       |
 | `Histgetter Container for Lambda Source (FAIL)/` | Optional ingestion/API            | **AWS Lambda** (Python)  |
-| `Models/Modern Model/`                           | Model artifacts from Version 2    | TensorFlow               |
-| `Models/Legacy Model/`                           | Model artifacts from Version 1    | TensorFlow               |
+| `Models/Modern Models/`                          | Trained ONNX model bundle (10 models) | ONNX / onnxruntime   |
+| `demos/evidence/`                                | Prediction charts, app screenshots, training logs | PNG      |
 | `demos/`                                         | Images for Github                 | Draw.io etc.             |
 
 ---
@@ -160,9 +168,81 @@ curl -X POST http://localhost:8080/predict \
 
 ## 📦 Data & Models
 
-* **Synthetic demo data** in `examples/`.
-* **Model formats:** trained in Keras; exported to **ONNX** in the newest version for portable inference. Was a **h5** export previously.
+* **Training data is real, not synthetic.** `atakanka350@gmail.com.csv` is 24,947 of my own Dexcom G6 readings at 5-minute resolution, 9 Apr – 7 Jul 2025. It is published deliberately: it is my own health record, and a personalised model is not reproducible without it. It contains no one else's data.
+* **Model formats:** trained in Keras; exported to **ONNX** in the newest version for portable inference. Was a **h5** export previously. ONNX export was measured to be lossless; freezing weights for inference costs roughly **7%** accuracy.
+* **Benchmark windows** (`BSP_*_Evaluator_Models.csv`) are hand-curated 15-point glucose sequences used to certify what each model is competent at.
 * Real integrations (Dexcom via `pydexcom`) require env-based credentials (never committed).
+
+---
+
+## 📊 Does It Actually Work?
+
+Held-out evaluation of the shipped 10-model ONNX ensemble, on the last 10% of the
+training CSV (2,493 sequences, temporally held out — never seen during training).
+415 recursive rollouts, clock advanced exactly as the inference container does.
+
+| Horizon | Method | MAE (mg/dL) | RMSE | MARD |
+|---|---|---|---|---|
+| **+5 min** | **BSP ensemble** | **3.4** | **6.6** | **3.0%** |
+| | persistence (assume no change) | 4.0 | 6.1 | 3.5% |
+| | linear extrapolation | 4.3 | 12.8 | 3.6% |
+| **+10 min** | **BSP ensemble** | **6.4** | **10.5** | **5.7%** |
+| | persistence | 7.5 | 11.1 | 6.5% |
+| | linear extrapolation | 9.4 | 26.8 | 7.9% |
+| **+15 min** | **BSP ensemble** | **9.3** | **14.4** | **8.2%** |
+| | persistence | 10.7 | 16.5 | 9.1% |
+| | linear extrapolation | 14.7 | 42.9 | 12.3% |
+
+The ensemble beats both naive baselines at every horizon. Persistence is included
+because it is the honest bar: a glucose predictor that cannot beat "assume the
+current value holds" is not predicting anything.
+
+**Read these numbers with three caveats.** They come from one person's physiology,
+so they say nothing about how the approach generalises — an early experiment
+training on four other people's data produced visibly worse models, which is why
+BSP is per-user by design. Accuracy also degrades steeply with horizon, as any
+recursive forecaster's does, since each step is fed its own previous output. And
+time-of-day turns out to matter enormously: rolling the forecast forward with a
+frozen clock instead of a real one nearly doubles MAE at +15 min, from 9.3 to 17.0.
+
+---
+
+## 🖼️ Evidence
+
+The system running, not just its architecture.
+
+<p align="center">
+  <img src="./demos/evidence/app_dashboard.png" alt="BSP web dashboard" width="720"/>
+</p>
+
+Live dashboard: 12 real readings (blue), 3 predicted (red), a confidence gauge,
+detected anomalies, and per-model competency scores.
+
+> Look closely at Model Details in that screenshot: **Trend Change reads 0.000 for
+> every model.** That is not a rendering artifact — it is a real bug, visible in
+> production for months, and it is the subject of the "competency scoring" commit
+> in this repository's history. The models were calling trend reversals correctly
+> and being scored as if they had failed.
+
+**Prediction charts, January 2024** — blue is the recorded trace, red the forecast,
+pale lines are earlier forecasts made from earlier points, so you can see the model
+committing to a call and then being graded by what happened next.
+
+| | | |
+|---|---|---|
+| ![](./demos/evidence/good-prediction-01.png) | ![](./demos/evidence/good-prediction-04.png) | ![](./demos/evidence/good-prediction-07.png) |
+
+**And where it got it wrong** — kept deliberately, because a model gallery without
+failures is marketing, not evidence.
+
+| | |
+|---|---|
+| ![](./demos/evidence/failure-case-01.png) | ![](./demos/evidence/failure-case-02.png) |
+
+Seventeen further unfiltered charts from a single practice run are in
+[`demos/evidence/practice-run-2024-01/`](./demos/evidence/practice-run-2024-01/),
+and a SageMaker training log is at
+[`demos/evidence/cloudwatch_training_log.png`](./demos/evidence/cloudwatch_training_log.png).
 
 ---
 
@@ -207,10 +287,13 @@ curl -X POST http://localhost:8080/predict \
 
 ## 🔐 Security & Privacy
 
-* No PHI/PII committed. **Use synthetic data** for demos.
-* Secrets via **AWS Secrets Manager / SSM** (never in Git).
-* `.gitignore` / `.dockerignore` configured to avoid accidental leakage.
-* If secrets ever existed in history, **rotate** and **purge** with `git filter-repo` before publishing.
+Stated accurately, because a security section that describes an aspiration is worse than none:
+
+* **This repository contains one person's real CGM data — mine, published by choice.** No other participant's data is here, and none ever was. If you fork this, do not treat the CSV as a template for handling anyone else's readings.
+* **Credentials were leaked in early history and have been dealt with.** A hard-coded Dexcom password, and MySQL credentials for a since-abandoned database, were committed between June and September 2025. All were **rotated first**, then purged from every commit on every branch with `git filter-repo`. Rotation is what made the leak harmless; the purge is hygiene.
+* **The lesson worth copying:** rotate before you purge. Rewriting history does not un-publish anything that was public for fourteen months.
+* Secrets belong in **AWS Secrets Manager / SSM**, never in Git. `.gitignore` covers `.env`, `*.h5`, `*.zip`, `*.log` and `*.json`.
+* **Known design debt:** the Dexcom integration relays the user's account password on every inference call, because `pydexcom` wraps the unofficial Share API. A production build should use Dexcom's official OAuth API instead. This is the single biggest architectural flaw in the system and it is not fixed here.
 
 ---
 
