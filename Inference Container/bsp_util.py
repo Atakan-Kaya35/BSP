@@ -168,11 +168,12 @@ class Model_Assessment():
                 anomalies += 1
                 confidence_hit += 30      
                 
-            print(values, "valsss")
-            global scores
-
-            if score_list == None:
-                score_list = scores
+            # No competency scores means nothing can be certified, so no indicator
+            # digit may fire. Previously this fell back to a module-level `scores`
+            # that was never defined, raising NameError into the bare except below
+            # and silently zeroing the whole response.
+            if not score_list:
+                return 0, 0, anomalies
 
             # Calculate the mean of the input values
             mean = sum(sum(x) for x in values) / len(values)
@@ -183,7 +184,15 @@ class Model_Assessment():
             # Set thresholds and bounds
             lower_bound = 80
             upper_bound = 200
-            proficient_model_score_threshold = 0.3
+            # Competency scores are balanced accuracies from the training container,
+            # so 0.5 is a coin flip and 1.0 is perfect. 0.65 is comfortably above
+            # chance without being unreachable.
+            #
+            # NOTE: this was 0.3, which was calibrated against the old scoring that
+            # compared MinMax-scaled values with a relative-error test. Any model
+            # bundle trained before that fix carries scores on the old scale and
+            # must be retrained before its scores mean anything against this gate.
+            proficient_model_score_threshold = 0.65
             indicative_value_threshold = 13
             rms_val = 0
 

@@ -44,7 +44,10 @@ class Standard_Vars:
             "BSP_Plateau_Evaluator_Models.csv",
             "BSP_General_Trend_Change_Evaluator_Models.csv"
         ]:
-            data = pd.read_csv(file).values  # shape: (n_samples, 1) or (n_samples,)
+            # header=None is essential: these files are raw glucose windows with no
+            # header row, so letting pandas infer one silently ate the first window
+            # of every benchmark (and mangled duplicate values into 151, 151.1, ...).
+            data = pd.read_csv(file, header=None).values  # shape: (n_windows, 15)
 
             # Original: the median point
             transformed = [[cls.transformed_point(cls.medianalyze_point(value)) for value in row] for row in data]

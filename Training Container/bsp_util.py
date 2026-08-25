@@ -57,65 +57,148 @@ class Model_Assessment():
 
 
         
+    # Bounds used when certifying a model's competencies.
+    # SAFE_LOW/SAFE_HIGH intentionally mirror the lower_bound/upper_bound the
+    # inference container uses in output_evaluator: a model is certified against
+    # the same range its indicator digit will later be asked about.
+    SAFE_LOW = 80
+    SAFE_HIGH = 200
+
+    # A 15-minute move smaller than this is inside CGM noise, so it counts as flat
+    # rather than as a direction. Separates the plateau case from the trend case.
+    FLAT_MOVE = 5
+
+    @staticmethod
+    def band_of(value):
+        """-1 below the safe range, +1 above it, 0 inside it."""
+        if value < Model_Assessment.SAFE_LOW:
+            return -1
+        if value > Model_Assessment.SAFE_HIGH:
+            return 1
+        return 0
+
+    # Each competency is defined by three questions asked of one benchmark window:
+    #
+    #   is_positive(actual, last)    was this window really a case of X?
+    #   model_calls(predicted, last) did the model claim X?
+    #   calls_agree(pred, act, last) if both said X, did they mean the same X?
+    #
+    # Scored as balanced accuracy, so 0.5 is a coin flip and a model that shouts
+    # the same answer at every window cannot score well. That matters most for
+    # extreme values: a model that cried "LOW!" constantly used to score 1.0.
+    @staticmethod
+    def competency_definitions():
+        return [
+            # extreme values -- the hundreds digit: are we about to leave the safe
+            # range, and on which side. Calling a high when it is a low is a miss,
+            # so the bands have to match, not just be non-zero.
+            ("extreme values",
+             lambda actual, last: Model_Assessment.band_of(actual) != 0,
+             lambda predicted, last: Model_Assessment.band_of(predicted) != 0,
+             lambda predicted, actual, last:
+                 Model_Assessment.band_of(predicted) == Model_Assessment.band_of(actual)),
+
+            # plateau -- the tens digit: will the value hold still. Flat has no
+            # direction to get wrong, so agreement is implied by both calling it.
+            ("plateau",
+             lambda actual, last: abs(actual - last) < Model_Assessment.FLAT_MOVE,
+             lambda predicted, last: abs(predicted - last) < Model_Assessment.FLAT_MOVE,
+             lambda predicted, actual, last: True),
+
+            # trend change -- the ones digit: output_evaluator only ever reads the
+            # SIGN of the move to pick 1 (down) or 2 (up), so certify the sign.
+            #
+            # This is the fix for trend change scoring 0.0 on every model ever
+            # trained. These windows are deliberately sharp reversals (+51 mg/dL in
+            # 15 minutes, for one). A recursive forecaster calls the turn but always
+            # undershoots its size, so the old "within 3% of the exact value" test
+            # failed every window even when the direction was right every time.
+            ("trend change",
+             lambda actual, last: abs(actual - last) >= Model_Assessment.FLAT_MOVE,
+             lambda predicted, last: abs(predicted - last) >= Model_Assessment.FLAT_MOVE,
+             lambda predicted, actual, last: np.sign(actual - last) == np.sign(predicted - last)),
+        ]
+
+    @staticmethod
+    def forecast_window(model, window):
+        """
+        Runs the same recursive 3-step forecast the inference container runs, for
+        one benchmark window.
+
+        Returns:
+            (predicted, actual, last_input) as plain floats in mg/dL. Everything
+            upstream is MinMax-scaled; scoring on those scaled values silently
+            broke every relative-error test, because 3% of a scaled 0.22 is
+            2.4 mg/dL at 120 but only 0.6 mg/dL at 60 -- impossibly tight exactly
+            on the low-glucose windows the extreme benchmark exists to measure.
+        """
+        current_input = np.array(window[:Standard_Vars.FIVE_MIN_INTERVAL]).reshape(
+            1, Standard_Vars.REG_SHAPE, Standard_Vars.INPUT_DIM)
+
+        for _ in range(3):
+            pred = model.predict(current_input)[0][0]
+            # 0.5 is scaled midnight; the benchmarks carry no real time-of-day
+            new_point = np.array([[pred, 0.5, 0.5]])
+            current_input = np.append(current_input[:, 1:, :], [new_point], axis=1)
+
+        def to_mgdl(scaled):
+            return float(Standard_Vars.sc.inverse_transform(
+                np.array([[scaled]]).reshape(1, 1))[0][0])
+
+        return (to_mgdl(pred),
+                to_mgdl(window[Standard_Vars.FIVE_MIN_INTERVAL + 2][0]),
+                to_mgdl(window[Standard_Vars.FIVE_MIN_INTERVAL - 1][0]))
+
     @staticmethod
     def model_score_generator(models):
         """
         Gererates the scores for all models in a bag of models [extreme, plateau, trend change]
 
-        Args: 
+        All three benchmark files are pooled into one window set, because a window
+        curated as a plateau example is also a perfectly good negative example for
+        trend change. Scoring each competency against its own file alone measured
+        sensitivity and nothing else -- every extreme window really was extreme, so
+        there was no way for a false alarm to cost a model anything.
+
+        Args:
             models: a bag of models to be evaluated
-        
+
         Returns:
-            2D List of scores in the form: 
-            [extreme values score, plateau score, trend change score] 
+            2D List of scores in the form:
+            [extreme values score, plateau score, trend change score]
             for every model in seqiential order of the model mashup
+            Each score is a balanced accuracy in [0, 1]; 0.5 is chance.
         """
         scores = []
-        evaluation_datasets = Standard_Vars.evaluation_datasets
+        windows = [w for dataset in Standard_Vars.evaluation_datasets for w in dataset]
+        competencies = Model_Assessment.competency_definitions()
 
         for model in models:
+            # One forecast per window, reused by all three competencies.
+            forecasts = [Model_Assessment.forecast_window(model, w) for w in windows]
+
             score = []
-            for evaluation_dataset in evaluation_datasets:
-                indication_rating = 0
-                for i in range(len(evaluation_dataset)):
-                    # Get the full sequence including future values we want to predict
-                    full_sequence = evaluation_dataset[i]
-                    
-                    # Take first Standard_Vars.FIVE_MIN_INTERVAL points as input
-                    input_data = full_sequence[:Standard_Vars.FIVE_MIN_INTERVAL]
-                    input_data = np.array(input_data)  # Convert to numpy array
-                    
-                    # Scale the input data
-                    X_test = input_data.reshape(1, Standard_Vars.REG_SHAPE, Standard_Vars.INPUT_DIM)
-                    
-                    # Make three predictions recursively
-                    predictions = []
-                    current_input = X_test.copy()
-                    
-                    for _ in range(3):
-                        pred = model.predict(current_input)[0][0]
-                        predictions.append(pred)
-                        
-                        # Create new input for next prediction
-                        new_point = np.array([[pred, 0.5, 0.5]])
-                        current_input = np.append(
-                            current_input[:, 1:, :],
-                            [new_point],
-                            axis=1
-                        )
-                    
-                    # Get the actual third value from the dataset
-                    actual_third_value = full_sequence[Standard_Vars.FIVE_MIN_INTERVAL + 2]
-                                        
-                    # Calculate accuracy for the third prediction only
-                    accuracy_score = Model_Assessment.accuracy_finder(
-                        np.array([predictions[-1]]), 
-                        np.array([actual_third_value[0]])
-                    )
-                    indication_rating += accuracy_score
-                    
-                score.append(indication_rating / len(evaluation_dataset))
+            for _, is_positive, model_calls, calls_agree in competencies:
+                hits = misses = correct_rejections = false_alarms = 0
+
+                for predicted, actual, last_input in forecasts:
+                    if is_positive(actual, last_input):
+                        if model_calls(predicted, last_input) and calls_agree(predicted, actual, last_input):
+                            hits += 1
+                        else:
+                            misses += 1
+                    else:
+                        if model_calls(predicted, last_input):
+                            false_alarms += 1
+                        else:
+                            correct_rejections += 1
+
+                sensitivity = hits / (hits + misses) if (hits + misses) else 0.0
+                specificity = correct_rejections / (correct_rejections + false_alarms)                     if (correct_rejections + false_alarms) else 0.0
+                score.append((sensitivity + specificity) / 2)
+
             scores.append(score)
+
         print("Scores for current model is:", scores)
         return scores
 
