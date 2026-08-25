@@ -195,7 +195,43 @@ training CSV (2,493 sequences, temporally held out — never seen during trainin
 
 The ensemble beats both naive baselines at every horizon. Persistence is included
 because it is the honest bar: a glucose predictor that cannot beat "assume the
-current value holds" is not predicting anything.
+current value holds" is not predicting anything. But beating it on average is a
+low bar, and the next table is the one that matters.
+
+### The number that actually matters
+
+Aggregate error flatters this model, because 65% of CGM windows are quiet and a
+model that predicts "roughly the same as now" scores well on them. Split the same
+test set by what the glucose actually did:
+
+| Window type | n | MAE | RMSE |
+|---|---|---|---|
+| all windows | 830 | 8.9 | 14.0 |
+| quiet (±10 mg/dL) | 542 | **5.1** | 7.8 |
+| moving (>20 mg/dL) | 99 | **26.8** | 31.5 |
+| falling fast (< −20) | 45 | **28.6** | 32.3 |
+
+Error is five times worse exactly where the product is supposed to earn its keep.
+Trained with MSE on a signal that barely moves two thirds of the time, the network
+learned that predicting "no change" is the safest way to minimise loss. It is,
+essentially, an expensive persistence model.
+
+**Hypoglycemia detection at +15 min, and the ensemble bug it exposes:**
+
+| Strategy | Events caught | Recall | Precision |
+|---|---|---|---|
+| ensemble **mean** (what ships today) | 3 / 34 | **8.8%** | 33% |
+| best single model | 16 / 34 | 47.1% | 50% |
+| ensemble **minimum** | 17 / 34 | **50.0%** | 50% |
+
+Averaging destroys the signal. When two models see a fall to 65 and eight do not,
+the mean is 133 and nothing fires. Individual models are five times better at
+calling a low than their own average is. For the safety decision specifically,
+the ensemble should be aggregated by minimum or a low quantile, not by mean —
+same models, same infrastructure, no retraining. That change is not yet made.
+
+Sample size is 34 hypo events from one person, enough to show a fivefold gap and
+not enough to tune a threshold on.
 
 **Read these numbers with three caveats.** They come from one person's physiology,
 so they say nothing about how the approach generalises — an early experiment
