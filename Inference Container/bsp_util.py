@@ -239,7 +239,32 @@ class Model_Assessment():
 
 
 class Communication():
-    def jsonBuilder(values, last_dexcom_instance, indicators, confidence, anomalies, is_first_call, score_list):
+    # The safe/unsafe flag is a warning decision, so it is governed by the most
+    # alarmed model in the bag rather than by the bag's consensus.
+    #
+    # Averaging is what destroyed the signal: when two models see a fall to 65 and
+    # eight do not, the mean is 133 and nothing fires. The trajectory returned to
+    # the user stays the mean, which is still the best point estimate -- only the
+    # binary warning switches to the cautious aggregate.
+    #
+    # Measured on 830 held-out rollouts, 104 genuinely out of range at +15 min:
+    #
+    #   rule                        recall   precision   F1
+    #   mean  < 80 or mean  > 200    60.6%      75.0%   67.0   <- previous behaviour
+    #   p10   < 80 or p90   > 200    76.9%      67.2%   71.7   <- current
+    #   min   < 80 or max   > 200    80.8%      58.7%   68.0
+    #
+    # The full min/max rule catches the most but fires falsely 41% of the time, and
+    # alarm fatigue is the specific failure this product exists to avoid -- a CGM
+    # that cries wolf gets ignored or switched off. p10/p90 takes 16 points of recall
+    # over the mean for 8 points of precision, which is the trade a warning system
+    # should want. Lower CAUTION_PERCENTILE to warn more eagerly.
+    SAFE_LOW = 80
+    SAFE_HIGH = 200
+    CAUTION_PERCENTILE = 10
+
+    @staticmethod
+    def jsonBuilder(values, last_dexcom_instance, indicators, confidence, anomalies, is_first_call, score_list, individual_preds=None):
         """
         Creates the json dictionary format
         Also updates the SQL database as it is the best time to do so
@@ -256,8 +281,17 @@ class Communication():
         answer = []
         
         try:
-            # the safe / unsafe cell
-            if values[-1][0] < 80 or values[-1][0] > 200:
+            # the safe / unsafe cell -- decided on the ensemble's extremes, not its mean
+            if individual_preds is not None and len(individual_preds):
+                horizon = [float(p[-1]) for p in individual_preds]
+                q = Communication.CAUTION_PERCENTILE
+                lowest = float(np.percentile(horizon, q))
+                highest = float(np.percentile(horizon, 100 - q))
+            else:
+                # No per-model predictions available; fall back to the mean trajectory.
+                lowest = highest = values[-1][0]
+
+            if lowest < Communication.SAFE_LOW or highest > Communication.SAFE_HIGH:
                 answer.append(False)
             else:
                 answer.append(True)

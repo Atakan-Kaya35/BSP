@@ -108,7 +108,7 @@ def lambda_handler(event, context):
         indicators, confidence, anomalies = Model_Assessment.output_evaluator(glucose_readings, individual_preds, indic_score_list)
 
         # Step 7: Return result
-        response = Communication.jsonBuilder(prevs, glucose_readings[0], indicators, confidence, anomalies, is_first_call, indic_score_list)
+        response = Communication.jsonBuilder(prevs, glucose_readings[0], indicators, confidence, anomalies, is_first_call, indic_score_list, individual_preds)
         return {
             "statusCode": 200,
             "body": json.dumps(response)
