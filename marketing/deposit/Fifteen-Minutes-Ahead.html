@@ -1,0 +1,794 @@
+<title>Fifteen Minutes Ahead - Technical Report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=JetBrains+Mono:wght@400;500&display=swap">
+
+<style>
+  :root {
+    --ground:   #EFF3F8;
+    --surface:  #FFFFFF;
+    --sunken:   #E4EAF2;
+    --ink:      #0D1626;
+    --ink-soft: #3B4859;
+    --muted:    #64718A;
+    --rule:     #CBD5E4;
+    --rule-soft:#DFE6EF;
+    --real:     #1E5FD0;
+    --pred:     #D0342C;
+    --warn:     #B3781A;
+    --good:     #1B7A55;
+    --band:     rgba(208, 52, 44, 0.07);
+
+    --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+    --body: "Source Serif 4", Georgia, "Times New Roman", serif;
+    --data: "JetBrains Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+
+    --spine: 40rem;
+    --wide: 62rem;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 1.0625rem;
+    line-height: 1.68;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: var(--wide); margin: 0 auto; padding: 0 1.5rem; }
+  .spine { max-width: var(--spine); margin-left: auto; margin-right: auto; }
+
+  /* ---------- masthead ---------- */
+
+  header.masthead {
+    border-bottom: 1px solid var(--rule);
+    background: var(--surface);
+  }
+  .masthead .wrap {
+    display: flex; flex-wrap: wrap; gap: 1rem 2rem;
+    align-items: baseline; justify-content: space-between;
+    padding-top: 1.1rem; padding-bottom: 1.1rem;
+  }
+  .mark {
+    font-family: var(--display); font-weight: 700; font-size: 1rem;
+    letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink);
+  }
+  .mark span { color: var(--pred); }
+  .masthead nav {
+    font-family: var(--data); font-size: 0.75rem;
+    display: flex; gap: 1.25rem; flex-wrap: wrap;
+  }
+  .masthead nav a { color: var(--muted); text-decoration: none; }
+  .masthead nav a:hover, .masthead nav a:focus-visible { color: var(--ink); }
+
+  /* ---------- title block ---------- */
+
+  .titleblock { padding: 5rem 0 3rem; }
+  .eyebrow {
+    font-family: var(--data); font-size: 0.72rem; letter-spacing: 0.18em;
+    text-transform: uppercase; color: var(--muted); margin: 0 0 1.5rem;
+  }
+  h1 {
+    font-family: var(--display); font-weight: 700;
+    font-size: clamp(2.75rem, 8vw, 5rem);
+    line-height: 0.98; letter-spacing: -0.03em;
+    margin: 0 0 1.5rem; text-wrap: balance;
+  }
+  .standfirst {
+    font-size: clamp(1.15rem, 2.4vw, 1.4rem);
+    line-height: 1.5; color: var(--ink-soft);
+    max-width: 34rem; margin: 0 0 2.5rem;
+  }
+  .byline {
+    font-family: var(--data); font-size: 0.8rem; color: var(--muted);
+    border-top: 1px solid var(--rule); padding-top: 1.1rem;
+    display: flex; flex-wrap: wrap; gap: 0.4rem 1.5rem;
+  }
+  .byline b { color: var(--ink); font-weight: 500; }
+
+  /* ---------- hero chart ---------- */
+
+  figure { margin: 0; }
+  .chartcard {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 1.75rem 1.5rem 1.25rem;
+    margin-bottom: 3.5rem;
+  }
+  .chartscroll { overflow-x: auto; }
+  .chartscroll svg { display: block; min-width: 34rem; width: 100%; height: auto; }
+  figcaption {
+    font-size: 0.9rem; line-height: 1.6; color: var(--muted);
+    border-top: 1px solid var(--rule-soft); margin-top: 1.1rem; padding-top: 0.9rem;
+  }
+  figcaption b { color: var(--ink); font-weight: 600; }
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 0.35rem 1.4rem;
+    font-family: var(--data); font-size: 0.72rem; color: var(--muted);
+    margin-bottom: 1rem;
+  }
+  .legend i {
+    display: inline-block; width: 1.4rem; height: 0; vertical-align: middle;
+    border-top-width: 2px; border-top-style: solid; margin-right: 0.45rem;
+  }
+
+  /* ---------- headline metrics ---------- */
+
+  .keystat {
+    display: grid; gap: 1px;
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    background: var(--rule); border: 1px solid var(--rule);
+    border-radius: 3px; overflow: hidden; margin-bottom: 3.5rem;
+  }
+  .keystat div { background: var(--surface); padding: 1.4rem 1.25rem; }
+  .keystat dt {
+    font-family: var(--data); font-size: 0.68rem; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--muted); margin-bottom: 0.6rem;
+  }
+  .keystat dd {
+    font-family: var(--display); font-weight: 700; font-size: 2.1rem;
+    line-height: 1; margin: 0 0 0.35rem; letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+  }
+  .keystat dd.up { color: var(--good); }
+  .keystat dd.down { color: var(--pred); }
+  .keystat p { font-size: 0.83rem; line-height: 1.45; color: var(--muted); margin: 0; }
+
+  /* ---------- sections ---------- */
+
+  section { padding: 3rem 0; }
+  section + section { border-top: 1px solid var(--rule-soft); }
+
+  h2 {
+    font-family: var(--display); font-weight: 600;
+    font-size: clamp(1.5rem, 3.4vw, 2rem);
+    line-height: 1.15; letter-spacing: -0.02em;
+    margin: 0 0 1.5rem; text-wrap: balance;
+  }
+  h2 .num {
+    font-family: var(--data); font-size: 0.75rem; font-weight: 400;
+    color: var(--pred); letter-spacing: 0.1em;
+    display: block; margin-bottom: 0.7rem;
+  }
+  h3 {
+    font-family: var(--display); font-weight: 600; font-size: 1.1rem;
+    letter-spacing: -0.005em; margin: 2.5rem 0 0.9rem;
+  }
+  p { margin: 0 0 1.2rem; }
+  .lede { font-size: 1.18rem; line-height: 1.6; color: var(--ink-soft); }
+  a { color: var(--real); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:focus-visible { outline: 2px solid var(--real); outline-offset: 2px; border-radius: 2px; }
+  strong { font-weight: 600; }
+
+  blockquote {
+    margin: 2rem 0; padding: 0 0 0 1.4rem;
+    border-left: 2px solid var(--pred);
+    font-size: 1.1rem; line-height: 1.55; color: var(--ink-soft);
+  }
+  blockquote p:last-child { margin-bottom: 0; }
+
+  /* ---------- tables ---------- */
+
+  .tablescroll { overflow-x: auto; margin: 1.75rem 0; }
+  table {
+    width: 100%; border-collapse: collapse;
+    font-family: var(--data); font-size: 0.82rem;
+    min-width: 30rem;
+  }
+  caption {
+    text-align: left; font-family: var(--data); font-size: 0.7rem;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted);
+    padding-bottom: 0.8rem;
+  }
+  th, td {
+    text-align: right; padding: 0.6rem 0.7rem;
+    border-bottom: 1px solid var(--rule-soft);
+    font-variant-numeric: tabular-nums;
+  }
+  th:first-child, td:first-child { text-align: left; }
+  thead th {
+    font-weight: 500; color: var(--muted); font-size: 0.7rem;
+    letter-spacing: 0.06em; text-transform: uppercase;
+    border-bottom: 1px solid var(--rule);
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tr.hero td { background: var(--sunken); font-weight: 500; }
+  td.pos { color: var(--good); }
+  td.neg { color: var(--pred); }
+
+  /* ---------- callout ---------- */
+
+  .callout {
+    background: var(--surface); border: 1px solid var(--rule);
+    border-left: 3px solid var(--warn);
+    border-radius: 3px; padding: 1.3rem 1.4rem; margin: 2rem 0;
+    font-size: 0.96rem; line-height: 1.6;
+  }
+  .callout p:last-child { margin-bottom: 0; }
+  .callout .tag {
+    font-family: var(--data); font-size: 0.68rem; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--warn); display: block;
+    margin-bottom: 0.6rem;
+  }
+
+  /* ---------- timeline ---------- */
+
+  ol.timeline { list-style: none; margin: 2rem 0 0; padding: 0; }
+  ol.timeline li {
+    display: grid; grid-template-columns: 6.5rem 1fr; gap: 0 1.5rem;
+    padding: 1rem 0; border-top: 1px solid var(--rule-soft);
+  }
+  ol.timeline li:last-child { border-bottom: 1px solid var(--rule-soft); }
+  ol.timeline time {
+    font-family: var(--data); font-size: 0.75rem; color: var(--pred);
+    padding-top: 0.22rem; letter-spacing: 0.02em;
+  }
+  ol.timeline b { font-family: var(--display); font-weight: 600; display: block; margin-bottom: 0.2rem; }
+  ol.timeline span { font-size: 0.94rem; color: var(--ink-soft); }
+
+  /* ---------- repos ---------- */
+
+  ul.repos { list-style: none; margin: 1.75rem 0 0; padding: 0; }
+  ul.repos li { padding: 0.85rem 0; border-top: 1px solid var(--rule-soft); }
+  ul.repos li:last-child { border-bottom: 1px solid var(--rule-soft); }
+  ul.repos code { font-family: var(--data); font-size: 0.85rem; }
+  ul.repos span { display: block; font-size: 0.9rem; color: var(--muted); margin-top: 0.15rem; }
+
+  /* ---------- citation ---------- */
+
+  .citation {
+    background: var(--sunken); border: 1px solid var(--rule);
+    border-radius: 3px; padding: 1.2rem 1.3rem;
+    font-family: var(--data); font-size: 0.8rem; line-height: 1.65;
+    color: var(--ink-soft); overflow-x: auto;
+  }
+
+  footer.foot {
+    border-top: 1px solid var(--rule); background: var(--surface);
+    padding: 2.5rem 0; margin-top: 3rem;
+    font-family: var(--data); font-size: 0.76rem; color: var(--muted);
+  }
+  footer.foot p { margin: 0 0 0.5rem; }
+
+  .disclaimer {
+    font-family: var(--data); font-size: 0.78rem; line-height: 1.6;
+    color: var(--muted); border: 1px dashed var(--rule);
+    border-radius: 3px; padding: 1rem 1.1rem; margin: 2.5rem 0 0;
+  }
+
+
+  /* ---------- print build ---------- */
+  @page { size: A4; margin: 18mm 17mm 20mm; }
+
+  html { font-size: 10.5pt; }
+  body { background: #FFFFFF; }
+  .wrap { max-width: 100%; padding: 0; }
+  .spine { max-width: 100%; }
+
+  header.masthead { border-bottom: 1.5px solid var(--ink); background: transparent; }
+  .masthead .wrap { padding: 0 0 0.5rem; }
+
+  .titleblock { padding: 1.6rem 0 1.2rem; }
+  h1 { font-size: 30pt; letter-spacing: -0.02em; margin-bottom: 0.7rem; }
+  .standfirst { font-size: 12.5pt; max-width: 100%; margin-bottom: 1.2rem; }
+  .byline { font-size: 8.5pt; }
+
+  .chartcard { padding: 0.9rem 0.9rem 0.7rem; margin-bottom: 1.4rem; }
+  .chartscroll { overflow: visible; }
+  .chartscroll svg { min-width: 0; }
+  figcaption { font-size: 8.8pt; }
+  .legend { font-size: 7.5pt; }
+
+  .keystat { margin-bottom: 1.6rem; }
+  .keystat div { padding: 0.75rem 0.8rem; }
+  .keystat dd { font-size: 17pt; }
+  .keystat dt { font-size: 7pt; }
+  .keystat p { font-size: 8pt; }
+
+  section { padding: 1.3rem 0; }
+  h2 { font-size: 15pt; margin-bottom: 0.8rem; }
+  h2 .num { font-size: 8pt; margin-bottom: 0.4rem; }
+  h3 { font-size: 11.5pt; margin: 1.2rem 0 0.5rem; }
+  p { margin-bottom: 0.7rem; }
+  .lede { font-size: 11.5pt; }
+  blockquote { font-size: 11pt; margin: 1rem 0; }
+  table { font-size: 8.5pt; min-width: 0; }
+  th, td { padding: 0.35rem 0.45rem; }
+  caption { font-size: 7.5pt; padding-bottom: 0.45rem; }
+  .tablescroll { overflow: visible; margin: 0.9rem 0; }
+  .callout { padding: 0.8rem 0.9rem; margin: 1rem 0; font-size: 10pt; }
+  ol.timeline li { padding: 0.5rem 0; grid-template-columns: 5.5rem 1fr; }
+  ol.timeline span { font-size: 9.5pt; }
+  ul.repos li { padding: 0.45rem 0; }
+  .citation { font-size: 8.5pt; padding: 0.8rem 0.9rem; }
+  .disclaimer { font-size: 8.5pt; margin-top: 1.2rem; }
+  footer.foot { padding: 1rem 0 0; margin-top: 1.4rem; font-size: 8pt; background: transparent; }
+
+  /* keep atomic blocks off page seams */
+  figure, table, .callout, .citation, .keystat, .disclaimer { break-inside: avoid; }
+  h2, h3 { break-after: avoid; }
+  section { break-inside: auto; }
+  #why { break-before: page; }
+  #limits, #provenance { break-before: page; }
+</style>
+
+<header class="masthead">
+  <div class="wrap">
+    <div class="mark">BS<span>P</span></div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="titleblock spine">
+    <p class="eyebrow">Technical report &middot; August 2026</p>
+    <h1>Fifteen Minutes Ahead</h1>
+    <p class="standfirst">A personalised glucose forecasting system that calls three in four hypoglycemic events fifteen minutes before they arrive &mdash; and the engineering that got it there.</p>
+    <p class="byline">
+      <span><b>Atakan Kaya</b></span>
+      <span>Blood Sugar Predictor (BSP)</span>
+      <span>Single-subject study</span>
+    </p>
+  </div>
+
+  <figure class="chartcard">
+    <div class="legend">
+      <span><i style="border-color: var(--real)"></i>recorded CGM</span>
+      <span><i style="border-color: var(--pred)"></i>what happened next</span>
+      <span><i style="border-color: var(--muted); border-top-style: dashed"></i>what the shipped model predicted</span>
+    </div>
+    <div class="chartscroll">
+      <svg viewBox="0 0 800 330" role="img" aria-label="A CGM trace on 3 May 2025 falling from 156 to 69 mg per decilitre over twenty minutes, while the deployed model predicted a flat 152.">
+        <!-- danger band below 80 -->
+        <rect x="60" y="220" width="700" height="60" fill="var(--band)"></rect>
+
+        <!-- gridlines -->
+        <g stroke="var(--rule-soft)" stroke-width="1">
+          <line x1="60" y1="40"  x2="760" y2="40"></line>
+          <line x1="60" y1="100" x2="760" y2="100"></line>
+          <line x1="60" y1="160" x2="760" y2="160"></line>
+          <line x1="60" y1="280" x2="760" y2="280"></line>
+        </g>
+        <line x1="60" y1="220" x2="760" y2="220" stroke="var(--warn)" stroke-width="1" stroke-dasharray="4 3"></line>
+
+        <!-- y labels -->
+        <g font-family="JetBrains Mono, monospace" font-size="11" fill="var(--muted)" text-anchor="end">
+          <text x="50" y="44">200</text>
+          <text x="50" y="104">160</text>
+          <text x="50" y="164">120</text>
+          <text x="50" y="224">80</text>
+          <text x="50" y="284">40</text>
+        </g>
+        <text x="14" y="164" font-family="JetBrains Mono, monospace" font-size="10" fill="var(--muted)"
+              text-anchor="middle" transform="rotate(-90 14 164)">mg/dL</text>
+
+        <!-- now marker -->
+        <line x1="573" y1="34" x2="573" y2="288" stroke="var(--ink-soft)" stroke-width="1"></line>
+        <text x="573" y="26" font-family="JetBrains Mono, monospace" font-size="10.5"
+              fill="var(--ink)" text-anchor="middle">21:12 &mdash; now</text>
+
+        <!-- recorded history -->
+        <polyline class="draw" fill="none" stroke="var(--real)" stroke-width="2.5"
+          stroke-linejoin="round" stroke-linecap="round"
+          points="60,65 107,67 153,76 200,87 247,97 293,106 340,115 387,117 433,111 480,100 527,100 573,106"></polyline>
+
+        <!-- what actually happened -->
+        <polyline class="draw d2" fill="none" stroke="var(--pred)" stroke-width="2.5"
+          stroke-linejoin="round" stroke-linecap="round"
+          points="573,106 620,132 667,172 713,208 760,237"></polyline>
+
+        <!-- the model's forecast -->
+        <polyline class="draw d3" fill="none" stroke="var(--muted)" stroke-width="2"
+          stroke-dasharray="5 4" stroke-linejoin="round"
+          points="573,106 620,109 667,111 713,112"></polyline>
+
+        <g class="fade">
+          <circle cx="760" cy="237" r="4" fill="var(--pred)"></circle>
+          <text x="750" y="257" font-family="JetBrains Mono, monospace" font-size="12"
+                fill="var(--pred)" text-anchor="end" font-weight="500">69 mg/dL</text>
+          <text x="750" y="272" font-family="JetBrains Mono, monospace" font-size="10"
+                fill="var(--muted)" text-anchor="end">21:32 &mdash; hypoglycemic</text>
+          <circle cx="713" cy="112" r="3.5" fill="var(--muted)"></circle>
+          <text x="705" y="103" font-family="JetBrains Mono, monospace" font-size="11"
+                fill="var(--muted)" text-anchor="end">predicted 152</text>
+        </g>
+
+        <g font-family="JetBrains Mono, monospace" font-size="10" fill="var(--muted)" text-anchor="middle">
+          <text x="60" y="300">20:17</text>
+          <text x="340" y="300">20:47</text>
+          <text x="573" y="300">21:12</text>
+          <text x="760" y="300">21:32</text>
+        </g>
+      </svg>
+    </div>
+    <figcaption>
+      3 May 2025, a real evening from my own sensor. At 21:12 I was at 156&nbsp;mg/dL and felt
+      fine. Twenty minutes later I was at 69. <b>This is the class of event BSP exists to
+      call</b> &mdash; and the first deployed version predicted 152, missing it entirely.
+      Finding out why turned an 8.8% detection rate into 73.8%. That investigation is the
+      substance of this report.
+    </figcaption>
+  </figure>
+
+  <dl class="keystat">
+    <div>
+      <dt>Hypo events called 15 min ahead</dt>
+      <dd class="up">73.8%</dd>
+      <p>25 of 34, held out temporally and never trained on</p>
+    </div>
+    <div>
+      <dt>Gain over the deployed baseline</dt>
+      <dd class="up">8.4&times;</dd>
+      <p>Same metric, same windows, precision up as well</p>
+    </div>
+    <div>
+      <dt>Event classifier precision</dt>
+      <dd>66.3%</dd>
+      <p>At 75.7% recall on low-glucose events</p>
+    </div>
+    <div>
+      <dt>Evidence base</dt>
+      <dd>24,947</dd>
+      <p>CGM readings, 90 days, single subject</p>
+    </div>
+  </dl>
+
+
+  <section id="abstract" class="spine" style="border-top:1px solid var(--rule-soft)">
+    <h2><span class="num">ABSTRACT</span>Summary</h2>
+    <p>Continuous glucose monitors report current glucose and a short-term trend arrow, but
+    the arrow arrives too late to act on: fast carbohydrate takes 15&ndash;20&nbsp;minutes to
+    reach the blood and corrective insulin longer still. This report documents BSP (Blood
+    Sugar Predictor), a per-user glucose forecasting system built to move that decision point
+    fifteen minutes earlier, together with an event-level evaluation of it.</p>
+
+    <p>BSP is a serverless pipeline &mdash; headless CGM history export, training on SageMaker
+    Processing, ONNX export, and scale-to-zero inference on AWS Lambda &mdash; producing a
+    15-minute forecast from twelve five-minute readings with time-of-day encoded as sine and
+    cosine. Models are trained per subject; an early attempt at cross-subject transfer
+    degraded performance.</p>
+
+    <p>Evaluated on a temporally held-out 10% of a single subject's 90-day record (24,947
+    readings), the originally deployed configuration reaches 9.3&nbsp;mg/dL mean absolute
+    error at the 15-minute horizon, beating persistence (10.7) and linear extrapolation
+    (14.7). That aggregate figure proves misleading. Sixty-five percent of test windows move
+    by 10&nbsp;mg/dL or less, and error on windows moving more than 20&nbsp;mg/dL is five
+    times higher (26.8 against 5.1). Hypoglycemia detection below 70&nbsp;mg/dL at the
+    15-minute horizon reaches only 8.8% recall &mdash; 3 of 34 events. Trained under mean
+    squared error on a signal that is flat two thirds of the time, the network converges
+    toward a persistence solution that scores well on average error while remaining blind to
+    the events the system exists to detect.</p>
+
+    <p>Two independent interventions are reported. First, ensemble aggregation: individual
+    members of the ten-model bag detect up to 16 of the 34 events while their mean detects 3,
+    because averaging cancels the minority of members that anticipate a fall. Substituting a
+    low-quantile aggregate for the mean &mdash; no retraining, identical weights &mdash;
+    raises hypoglycemia recall to 50.0% at unchanged precision, and out-of-range warning
+    recall from 60.6% to 76.9%. Second, objective design: an asymmetric loss penalising
+    under-prediction of falls raises recall to 73.8%, and a classifier trained directly on the
+    low-glucose event reaches 75.7% recall at 66.3% precision.</p>
+
+    <p>The aggregation result is the most transferable finding and is not specific to glucose:
+    where an ensemble is used to detect rare events, mean aggregation systematically discards
+    the signal from the minority of members that detected them.</p>
+
+    <p><strong>Limitations.</strong> All data derive from one subject; 34 hypoglycemic test
+    events suffice to demonstrate an eightfold gap but not to tune a clinical threshold or
+    establish generalisation. There is no clinical validation, ethics approval, or trial.
+    Precision costs are material &mdash; at 43.7% precision more than half of the asymmetric
+    model's warnings are false. The retrained models are evaluated offline and are not
+    deployed. BSP is not a medical device and must not inform treatment decisions.</p>
+  </section>
+
+  <section id="why" class="spine">
+    <h2><span class="num">§ 1</span>Why fifteen minutes</h2>
+    <p class="lede">I have Type&nbsp;1 diabetes. I built this for myself, before I had any
+    professional reason to build anything.</p>
+
+    <p>A continuous glucose monitor tells you where you are and shows an arrow for where
+    you're heading. The arrow is not enough to act on, and the reason is pharmacokinetic:
+    fast carbohydrate takes 15&ndash;20&nbsp;minutes to reach the blood, and corrective
+    insulin takes considerably longer. By the time an arrow turns down far enough to be
+    alarming, the intervention you make in response is already 15&nbsp;minutes late.</p>
+
+    <p>The practical consequence is the trade every CGM user knows. Set the low alarm
+    high, at 90&nbsp;mg/dL, and it fires constantly until you stop hearing it. Set it at
+    80 and by the time it sounds with one arrow down you are going to 65 regardless &mdash;
+    which costs you the next hour. Neither setting gives you a decision you can act on.</p>
+
+    <blockquote>
+      <p>The gap isn't knowledge. It's that knowing arrives at the same moment as the
+      event. BSP was an attempt to move knowing fifteen minutes earlier.</p>
+    </blockquote>
+
+    <p>That is the entire product thesis, and it is worth stating plainly because it also
+    defines the only metric that matters. A glucose model's average error is nearly
+    irrelevant. What matters is whether it calls the events &mdash; and as this report
+    documents, those two things can point in opposite directions.</p>
+  </section>
+
+  <section id="system" class="spine">
+    <h2><span class="num">§ 2</span>The system</h2>
+    <p>BSP is a per-user forecaster. Each person gets their own trained model bundle,
+    because an early experiment training on four other people's traces produced visibly
+    worse results than training on my own &mdash; glucose response is idiosyncratic enough
+    that a population model gave up more than it gained.</p>
+
+    <p>The deployed architecture is fully serverless:</p>
+
+    <div class="tablescroll">
+      <table>
+        <caption>Deployed components</caption>
+        <thead>
+          <tr><th>Stage</th><th>Runtime</th><th>Function</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Ingestion</td><td>App Runner</td><td>Headless export of 90 days of CGM history to S3</td></tr>
+          <tr><td>Training</td><td>SageMaker Processing</td><td>Trains a bag of LSTM models, scores, exports ONNX</td></tr>
+          <tr><td>Inference</td><td>Lambda</td><td>Loads the bundle, returns a 15-minute forecast</td></tr>
+          <tr><td>Storage</td><td>S3</td><td>Per-user model bundles and training data</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>The model takes twelve 5-minute readings &mdash; one hour of history &mdash; with
+    time-of-day encoded as sine and cosine, and predicts one step ahead. Three recursive
+    steps give the 15-minute horizon. Training happens in Keras; inference runs on ONNX,
+    which keeps the Lambda image small enough to cold-start in roughly 40&nbsp;seconds and
+    scale to zero between calls.</p>
+
+    <p>Two design choices proved to matter more than expected. Splitting training and
+    inference into separate images meant the serving path never carries TensorFlow. And
+    encoding time-of-day turned out to be load-bearing: re-running the evaluation with a
+    frozen clock instead of a real advancing one nearly doubles error at the 15-minute
+    horizon, from 9.3 to 17.0&nbsp;mg/dL mean absolute error.</p>
+  </section>
+
+  <section id="evaluation" class="spine">
+    <h2><span class="num">§ 3</span>Measured performance</h2>
+
+    <p class="lede">BSP calls 73.8% of hypoglycemic events fifteen minutes ahead &mdash;
+    25 of the 34 in the held-out record &mdash; against 8.8% for the configuration I
+    originally deployed. The distance between those two numbers is where the engineering
+    is.</p>
+
+    <p>Evaluation uses the last 10% of the record, held out temporally and never seen
+    during training. Rollouts advance the clock exactly as the production inference path
+    does. Two naive baselines are reported throughout, because a glucose predictor that
+    cannot beat <em>assume the current value holds</em> is not predicting anything &mdash;
+    and most write-ups quietly omit that bar.</p>
+
+    <div class="tablescroll">
+      <table>
+        <caption>Point accuracy &middot; 415 held-out rollouts</caption>
+        <thead>
+          <tr><th>Horizon</th><th>Method</th><th>MAE</th><th>RMSE</th><th>MARD</th></tr>
+        </thead>
+        <tbody>
+          <tr class="hero"><td>+5 min</td><td>BSP ensemble</td><td>3.4</td><td>6.6</td><td>3.0%</td></tr>
+          <tr><td></td><td>persistence</td><td>4.0</td><td>6.1</td><td>3.5%</td></tr>
+          <tr><td></td><td>linear extrapolation</td><td>4.3</td><td>12.8</td><td>3.6%</td></tr>
+          <tr class="hero"><td>+15 min</td><td>BSP ensemble</td><td>9.3</td><td>14.4</td><td>8.2%</td></tr>
+          <tr><td></td><td>persistence</td><td>10.7</td><td>16.5</td><td>9.1%</td></tr>
+          <tr><td></td><td>linear extrapolation</td><td>14.7</td><td>42.9</td><td>12.3%</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Why average error is the wrong instrument</h3>
+
+    <p>Those figures beat both baselines at every horizon, and taken alone they would
+    mislead you. Split the same test set by what the glucose actually did:</p>
+
+    <div class="tablescroll">
+      <table>
+        <caption>The same model, by window type &middot; +15 min</caption>
+        <thead>
+          <tr><th>Window</th><th>n</th><th>MAE</th><th>RMSE</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>all windows</td><td>830</td><td>8.9</td><td>14.0</td></tr>
+          <tr><td>quiet (&plusmn;10 mg/dL)</td><td>542</td><td class="pos">5.1</td><td>7.8</td></tr>
+          <tr class="hero"><td>moving (&gt;20 mg/dL)</td><td>99</td><td class="neg">26.8</td><td>31.5</td></tr>
+          <tr><td>falling fast (&lt; &minus;20)</td><td>45</td><td class="neg">28.6</td><td>32.3</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p><strong>Sixty-five percent of CGM windows barely move.</strong> Aggregate error is
+    carried almost entirely by them, which means a model can post a respectable MAE while
+    being blind to every event that matters.</p>
+
+    <div class="callout">
+      <span class="tag">Diagnosis</span>
+      <p>Trained with mean squared error on a signal that is flat two thirds of the time,
+      the network had learned that predicting <em>roughly the same as now</em> minimises
+      loss. That is a loss function working correctly on a badly posed objective &mdash;
+      and because persistence scores well on average error, no metric in the dashboard
+      revealed it. The fix is not a bigger network. It is asking a different question.</p>
+    </div>
+
+    <h3>Event detection, which is the metric that matters</h3>
+
+    <div class="tablescroll">
+      <table>
+        <caption>Hypoglycemia &middot; &lt;70 mg/dL at +15 min &middot; 34 events, 830 windows</caption>
+        <thead>
+          <tr><th>Configuration</th><th>Caught</th><th>Recall</th><th>Precision</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>MSE regression, ensemble mean &mdash; as first deployed</td><td>3 / 34</td><td class="neg">8.8%</td><td>33.0%</td></tr>
+          <tr><td>same models, cautious aggregation &mdash; no retraining</td><td>17 / 34</td><td>50.0%</td><td>50.0%</td></tr>
+          <tr class="hero"><td>asymmetric-loss retrain</td><td>25 / 34</td><td class="pos">73.8%</td><td>43.7%</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>Two independent levers, and they compound. Half the gain needs no retraining at all
+    &mdash; it comes from how the ensemble votes, which is &sect;&nbsp;4. The rest comes
+    from changing what the network is asked to optimise.</p>
+  </section>
+
+  <section id="finding" class="spine">
+    <h2><span class="num">§ 4</span>The finding: averaging destroys rare-event detection</h2>
+
+    <p class="lede">The most transferable result in this report has nothing to do with
+    glucose. Individual models in the bag catch up to 16 of the 34 events. Their mean
+    catches 3.</p>
+
+    <p>The mechanism is straightforward once seen. When two models in a ten-model bag
+    forecast a fall to 65&nbsp;mg/dL and eight forecast 150, the mean lands near 133 and no
+    warning fires. Averaging is the correct operation for a point estimate and the wrong
+    one for a warning, because a warning is a claim about the worst plausible outcome, not
+    the consensus one. The bag was doing its job; the reduction step was throwing the
+    result away.</p>
+
+    <p>Changing only the aggregation &mdash; same models, same weights, no retraining
+    &mdash; recovers most of it:</p>
+
+    <div class="tablescroll">
+      <table>
+        <caption>Out-of-range warning &middot; outside [80, 200] at +15 min &middot; 104 events</caption>
+        <thead>
+          <tr><th>Rule</th><th>Recall</th><th>Precision</th><th>F1</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>mean</td><td>60.6%</td><td>75.0%</td><td>67.0</td></tr>
+          <tr class="hero"><td>10th / 90th percentile</td><td class="pos">76.9%</td><td>67.2%</td><td>71.7</td></tr>
+          <tr><td>min / max</td><td>80.8%</td><td class="neg">58.7%</td><td>68.0</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>The full min/max rule catches the most and fires falsely 41% of the time. Alarm
+    fatigue is the precise failure this product was built to avoid, so the tail percentile
+    is the better trade: sixteen points of recall bought for eight points of precision.</p>
+
+    <h3>And then, retraining</h3>
+
+    <p>Aggregation is a patch. The objective was the real problem, so I retrained with
+    losses that stop rewarding the flatline &mdash; an asymmetric loss that penalises
+    under-predicting a fall more heavily than a false alarm, and a variant that predicts
+    the low-glucose event directly as a classification rather than inferring it from a
+    regressed value.</p>
+
+    <div class="tablescroll">
+      <table>
+        <caption>Retrained variants &middot; 3 seeds each &middot; +15 min</caption>
+        <thead>
+          <tr><th>Objective</th><th>Event</th><th>Recall</th><th>Precision</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>MSE (as deployed)</td><td>&lt;70 mg/dL</td><td class="neg">8.8%</td><td>33.0%</td></tr>
+          <tr class="hero"><td>asymmetric loss</td><td>&lt;70 mg/dL</td><td class="pos">73.8%</td><td>43.7%</td></tr>
+          <tr><td>asymmetric, stronger</td><td>&lt;70 mg/dL</td><td>88.3%</td><td class="neg">22.9%</td></tr>
+          <tr><td>direct 3-step + asymmetric</td><td>&lt;70 mg/dL</td><td>65.0%</td><td>46.9%</td></tr>
+          <tr class="hero"><td>event classifier</td><td>&lt;80 mg/dL</td><td class="pos">75.7%</td><td>66.3%</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>Two readings. On the identical metric &mdash; hypoglycemia below 70&nbsp;mg/dL,
+    same held-out windows &mdash; recall goes from 8.8% to 73.8%, an 8.4-fold improvement,
+    with precision also rising. And the classifier, which optimises the event directly
+    rather than regressing a value and thresholding it, holds 75.7% recall at 66.3%
+    precision on the wider low-glucose definition. The lesson generalises past glucose: if
+    you care about rare events, do not train on average error and threshold the output.</p>
+  </section>
+
+  <section id="limits" class="spine">
+    <h2><span class="num">§ 5</span>What this does not show</h2>
+
+    <p>These results come from one person. That is the central limitation and no amount of
+    held-out splitting fixes it.</p>
+
+    <ul>
+      <li><strong>Single subject.</strong> 24,947 readings across 90 days, all mine. The
+      34 hypoglycemic events in the test window are enough to demonstrate an eightfold
+      gap; they are not enough to tune a clinical threshold or to claim the approach
+      transfers. An early attempt at training on four other people's data produced worse
+      models, which is suggestive but is not a generalisation study.</li>
+      <li><strong>No clinical validation.</strong> No trial, no ethics approval, no
+      comparison against a predictive CGM feature.</li>
+      <li><strong>Precision is a real cost.</strong> At 43.7% precision, more than half of
+      the asymmetric model's warnings are false. Whether that trade is acceptable is an
+      empirical question about human behaviour that I have not measured.</li>
+      <li><strong>An architectural flaw remains.</strong> The Dexcom integration relays
+      the user's account password on every inference call, because it wraps an unofficial
+      API. A production build needs the official OAuth path. This is not fixed.</li>
+      <li><strong>The retrained models are not deployed.</strong> The figures above are
+      offline evaluation. Only the aggregation change has been applied to the serving
+      code.</li>
+    </ul>
+
+    <p>I would rather publish those five paragraphs than a number without a denominator.
+    The evaluation is reproducible from the repository against the same data.</p>
+  </section>
+
+  <section id="provenance" class="spine">
+    <h2><span class="num">§ 6</span>Provenance</h2>
+
+    <p>BSP was built between January 2024 and September 2025, during my first semesters at
+    university, without AI assistance &mdash; the commit history and its dates are public
+    and unedited. The evaluation and fixes in sections 3 and 4 were done in August 2026,
+    with AI assistance. Those are separate chapters and the repository keeps them
+    separate.</p>
+
+    <ol class="timeline">
+      <li><time>Jan 2024</time><span><b>First model</b>An LSTM on one month of my own
+        readings. Single feature, twelve timesteps.</span></li>
+      <li><time>Feb 2024</time><span><b>Four other people</b>Transfer to other traces
+        failed. This is why BSP is per-user.</span></li>
+      <li><time>Apr&ndash;Jul 2024</time><span><b>First app, first API</b>A Flutter
+        attempt, then a Flask monolith serving four Keras models.</span></li>
+      <li><time>Jun 2025</time><span><b>Serverless rewrite</b>Lambda, SageMaker,
+        App Runner, S3. Time-of-day added as a feature.</span></li>
+      <li><time>Jul 2025</time><span><b>TensorFlow Lite abandoned</b>Neither LSTM nor GRU
+        converted cleanly. Moved to ONNX, measured lossless, and kept it.</span></li>
+      <li><time>Aug 2025</time><span><b>Working product</b>React web and Kotlin Android
+        clients, confidence bands, anomaly detection.</span></li>
+      <li><time>Sep 2025</time><span><b>Both doors close</b>Patent rejected. Google Play
+        blocked on medical-software requirements despite a completed submission. Released
+        as open source and set down.</span></li>
+      <li><time>Aug 2026</time><span><b>Evaluated properly</b>Found the flatlining, the
+        aggregation bug, and a scoring bug that had silently disabled two thirds of the
+        indicator system in production.</span></li>
+    </ol>
+
+    <h3>Repositories</h3>
+    <ul class="repos">
+      <li><code>Atakan-Kaya35/BSP</code><span>Training and inference containers, evaluation, model bundle</span></li>
+      <li><code>Atakan-Kaya35/blood-sugar-predictor-web</code><span>React and Plotly dashboard</span></li>
+      <li><code>Atakan-Kaya35/blood-sugar-predictor-android</code><span>Kotlin and Jetpack Compose client</span></li>
+      <li><code>Atakan-Kaya35/bsp-privacy-policy</code><span>Published for the Google Play submission</span></li>
+      <li><code>Atakan-Kaya35/BSP-app-process</code><span>The earlier Flutter attempt, April 2024</span></li>
+    </ul>
+
+    <h3>Citation</h3>
+    <div class="citation">
+      Kaya, A. (2026). <em>Fifteen Minutes Ahead: a personalised glucose forecasting
+      system and an honest evaluation of it.</em> Zenodo. Technical report, single-subject study. DOI: 10.5281/zenodo.[assigned on deposit]
+    </div>
+
+    <p class="disclaimer">
+      <strong>Not a medical device.</strong> BSP is a research and educational system. It
+      is not validated for clinical use, must not inform treatment decisions, and has no
+      regulatory clearance in any jurisdiction. If you have diabetes, use the device your
+      clinician gave you.
+    </p>
+  </section>
+
+</div>
+
+<footer class="foot">
+  <div class="wrap spine">
+    <p>Atakan Kaya &middot; Blood Sugar Predictor &middot; Technical report, August 2026</p>
+    <p>Evaluation reproducible from the published repository. Source data is one subject's
+    own continuous glucose record, published with the code.</p>
+  </div>
+</footer>
