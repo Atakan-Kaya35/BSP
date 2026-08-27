@@ -1,14 +1,18 @@
-# Medium rewrite — ready to paste
+# Medium post two — the follow-up
 
-**What changed and why:** the original post opens with "I'm fascinated by real-time
-time-series ML." That frames the most unfakeable thing about this project — that you are
-the patient — as a generic ML exercise. It also repeats two claims that were false
-(synthetic-only data, secrets never in Git), shows an API shape the code does not return,
-and publishes no accuracy figures at all.
+**Structure decision:** the September 2025 post stays untouched. It is a dated record of
+what was known then, and editing it in place would erase the arc that makes this story
+work — shipped, believed it worked, walked away, came back a year later and measured it.
+Two posts carry that; one quietly-revised post hides half of it.
 
-**Keep the original URL.** Edit in place. It already has indexing you cannot buy back.
+This file is therefore a **new post**, not a replacement. Its corrections section refers
+back to the original rather than overwriting it.
 
-**New title:** I Built a System to Predict My Own Blood Sugar. Then I Found Out It Missed
+See `MEDIUM-ORIGINAL-NOTE.md` for the two-line note to add at the top of the old post. That
+note is the only change the original needs: it flags the two factually wrong claims and
+routes existing readers and search traffic here.
+
+**Title:** I Built a System to Predict My Own Blood Sugar. Then I Found Out It Missed
 91% of the Events It Was Built For.
 
 **Subtitle:** A Type 1 diabetic's cloud-native CGM predictor — and what a proper
@@ -24,21 +28,21 @@ before I had any professional reason to build anything.
 
 If you use a continuous glucose monitor, you know the trade. Set your low alarm at 90 and
 it screams all day until you stop hearing it. Set it at 80 and by the time it fires with
-one arrow down, you are going to 65 whatever you do — and that costs you the next hour.
+one arrow down, you are going to 65 whatever you do and that costs you the next hour.
 Neither setting gives you a decision you can act on.
 
-The reason is pharmacokinetics, not software. Fast carbohydrate takes 15–20 minutes to
-reach your blood. Corrective insulin takes considerably longer. By the time the arrow
+The reason is pharmacokinetics (fancy right), not software. Fast carbohydrate takes 15–20 minutes to
+reach your blood. Corrective insulin takes considerably longer, mine takes about 30 minutes to start. By the time the arrow
 turns down far enough to alarm you, the intervention you make in response is already
 fifteen minutes late.
 
-So I tried to move knowing fifteen minutes earlier.
+So I tried to move knowing **fifteen minutes** earlier.
 
 ## What I built
 
 BSP is a per-user glucose forecaster. Every user gets their own trained models, because an
 early experiment training on four other people's traces produced visibly worse results
-than training on my own. Glucose response is idiosyncratic enough that a population model
+than training on my own. Glucose response is unpredictable enough that a population model
 gave up more than it gained.
 
 The deployed stack is fully serverless:
@@ -168,14 +172,20 @@ it wraps an unofficial API; a real build needs the official OAuth path.
 
 I would rather publish those five sentences than a number without a denominator.
 
-## Corrections to the original version of this post
+## What I got wrong the first time
 
-In the interest of the same standard: the earlier version of this article said the
-repository ships synthetic demo data only. It does not — it ships 24,947 of my own real CGM
-readings, published deliberately. It also said secrets were kept out of Git, which was not
-true at the time; a hard-coded credential sat in the repository and has since been rotated
-and purged from history. The `/predict` response shape shown previously was aspirational
-rather than what the code returns.
+I wrote about this system [in September 2025](ORIGINAL_POST_URL), and I have left that post
+up unedited, because it is an accurate record of what I believed at the time. Three things
+in it were not true, and they are worth naming here rather than quietly fixing there.
+
+It said the repository ships synthetic demo data only. It does not — it ships 24,947 of my
+own real CGM readings, published deliberately. It said secrets were kept out of Git, which
+was not true when I wrote it; a hard-coded credential sat in the repository, and has since
+been rotated and purged from history. And the `/predict` response shape I showed was the
+one I intended, not the one the code returns.
+
+None of those were deliberate. All three are the same failure as the 8.8%: I described the
+system I thought I had built instead of measuring the one I did.
 
 ## What I actually learned
 
